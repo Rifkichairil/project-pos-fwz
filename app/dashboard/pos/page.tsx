@@ -38,6 +38,16 @@ interface CartItem {
   image: string;
 }
 
+interface BoardOrder {
+  id: string;
+  name: string;
+  type: string;
+  status: string;
+  time: string;
+  items: number;
+  total: number;
+}
+
 const categories = ["All", "Appetizer", "Main Dish", "Beverage", "Snack", "Dessert"];
 
 const menuItems = [
@@ -165,6 +175,14 @@ export default function PosPage() {
   const [cashAmount, setCashAmount] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [activeTab, setActiveTab] = useState<"new" | "list">("new");
+  const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([
+    { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm", items: 3, total: 75000 },
+    { id: "#4481", name: "Jung Kit", type: "Delivery", status: "Ready", time: "07-05-2025, 03:18 pm", items: 2, total: 52000 },
+    { id: "#4482", name: "John Pantau", type: "Dine in", status: "Cancel", time: "07-05-2025, 02:18 pm", items: 5, total: 128000 },
+    { id: "#4483", name: "Jane Doe", type: "Takeaway", status: "Ready", time: "07-05-2025, 01:45 pm", items: 1, total: 26000 },
+    { id: "#4484", name: "Bob Smith", type: "Dine in", status: "Waiting", time: "07-05-2025, 12:30 pm", items: 4, total: 96000 },
+    { id: "#4485", name: "Alice Chan", type: "Takeaway", status: "Done", time: "07-05-2025, 11:15 am", items: 2, total: 45000 },
+  ]);
 
   const promoMap: Record<string, { label: string; calc: (sub: number) => number }> = {
     WELCOME10: { label: "WELCOME10", calc: (sub) => Math.round(sub * 0.1) },
@@ -521,41 +539,64 @@ export default function PosPage() {
           </div>
             </>
           ) : (
-            <div className="space-y-4">
-              <h2 className="text-base font-semibold">All Orders</h2>
-              <div className="grid grid-cols-5 gap-4">
+            <div className="flex h-full flex-col gap-4">
+              <h2 className="text-base font-semibold">Order Board</h2>
+              <div className="flex gap-4 overflow-x-auto pb-2">
                 {[
-                  { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm" },
-                  { id: "#4481", name: "Jung Kit", type: "Delivery", status: "Ready", time: "07-05-2025, 03:18 pm" },
-                  { id: "#4482", name: "John Pantau", type: "Dine in", status: "Cancel", time: "07-05-2025, 02:18 pm" },
-                  { id: "#4483", name: "Jane Doe", type: "Takeaway", status: "Ready", time: "07-05-2025, 01:45 pm" },
-                  { id: "#4484", name: "Bob Smith", type: "Dine in", status: "Waiting", time: "07-05-2025, 12:30 pm" },
-                ].map((order) => (
-                  <Card key={order.id} className="border-border/60">
-                    <CardContent className="p-4">
-                      <div className="mb-3 flex items-center justify-between">
+                  { key: "Waiting", label: "Waiting", color: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
+                  { key: "Ready", label: "Ready", color: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500" },
+                  { key: "Done", label: "Done", color: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500" },
+                  { key: "Cancel", label: "Cancel", color: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-500" },
+                ].map((col) => {
+                  const orders = boardOrders.filter((o) => o.status === col.key);
+                  return (
+                    <div
+                      key={col.key}
+                      className="flex w-65 shrink-0 flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const id = e.dataTransfer.getData("orderId");
+                        setBoardOrders((prev) =>
+                          prev.map((o) => (o.id === id ? { ...o, status: col.key } : o))
+                        );
+                      }}
+                    >
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <ShoppingBag className="size-4 text-muted-foreground" />
-                          <span className="text-sm font-medium">{order.type}</span>
+                          <span className={cn("size-2 rounded-full", col.dot)} />
+                          <span className="text-sm font-semibold">{col.label}</span>
                         </div>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "text-xs",
-                            order.status === "Waiting" && "border-amber-200 bg-amber-50 text-amber-700",
-                            order.status === "Ready" && "border-green-200 bg-green-50 text-green-700",
-                            order.status === "Cancel" && "border-red-200 bg-red-50 text-red-700"
-                          )}
-                        >
-                          {order.status}
+                        <Badge variant="outline" className={cn("text-xs", col.color)}>
+                          {orders.length}
                         </Badge>
                       </div>
-                      <p className="text-sm font-medium">{order.name}</p>
-                      <p className="text-xs text-muted-foreground">{order.time}</p>
-                      <p className="mt-1 text-xs font-semibold text-primary">{order.id}</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                      <div className="flex flex-col gap-2">
+                        {orders.map((order) => (
+                          <Card
+                            key={order.id}
+                            draggable
+                            onDragStart={(e) => e.dataTransfer.setData("orderId", order.id)}
+                            className="cursor-grab border-border/60 shadow-sm active:cursor-grabbing"
+                          >
+                            <CardContent className="p-3">
+                              <div className="mb-2 flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">{order.id}</span>
+                                <span className="text-xs text-muted-foreground">{order.time}</span>
+                              </div>
+                              <p className="text-sm font-medium">{order.name}</p>
+                              <p className="text-xs text-muted-foreground">{order.type}</p>
+                              <div className="mt-2 flex items-center justify-between">
+                                <span className="text-xs text-muted-foreground">{order.items} items</span>
+                                <span className="text-xs font-semibold">Rp. {order.total.toLocaleString("id-ID")}</span>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
