@@ -13,6 +13,7 @@ import {
   Wallet,
   Table,
   CreditCard,
+  Users,
   Settings,
   HelpCircle,
   ChevronDown,
@@ -28,6 +29,7 @@ const navItems = [
   { icon: Wallet, label: "Withdraw", href: "#" },
   { icon: Table, label: "Manage Table", href: "#", hasSubmenu: true },
   { icon: CreditCard, label: "Payment", href: "#" },
+  { icon: Users, label: "Member", href: "/member" },
 ];
 
 const bottomNav = [
