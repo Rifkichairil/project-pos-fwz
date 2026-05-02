@@ -46,6 +46,7 @@ interface BoardOrder {
   time: string;
   items: number;
   total: number;
+  menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }[];
 }
 
 const categories = ["All", "Appetizer", "Main Dish", "Beverage", "Snack", "Dessert"];
@@ -137,36 +138,14 @@ const menuItems = [
   },
 ];
 
-const initialCart = [
-  {
-    id: 1,
-    name: "Es Cendol Ijo",
-    variant: "Regular",
-    sugar: "Normal Sugar",
-    price: 20000,
-    qty: 1,
-    note: "",
-    image: "https://images.unsplash.com/photo-1558857563-b371033873b8?w=100&q=80",
-  },
-  {
-    id: 2,
-    name: "Es Kelapa Muda",
-    variant: "Regular",
-    sugar: "Less Sugar",
-    price: 22000,
-    qty: 1,
-    note: "",
-    image: "https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=100&q=80",
-  },
-];
-
 export default function PosPage() {
-  const [activeCategory, setActiveCategory] = useState("Beverage");
-  const [cart, setCart] = useState<CartItem[]>(initialCart as CartItem[]);
-  const [menuQuantities, setMenuQuantities] = useState<Record<number, number>>({
-    3: 1,
-    5: 1,
-  });
+  const [activeCategory, setActiveCategory] = useState("All");
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [menuQuantities, setMenuQuantities] = useState<Record<number, number>>({});
+  const [menuSearch, setMenuSearch] = useState("");
+  const [customerName, setCustomerName] = useState("");
+  const [orderType, setOrderType] = useState("");
+  const [tableNumber, setTableNumber] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<Record<number, string>>({});
   const [selectedSugar, setSelectedSugar] = useState<Record<number, string>>({});
   const [editingCartItem, setEditingCartItem] = useState<number | null>(null);
@@ -174,14 +153,34 @@ export default function PosPage() {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [cashAmount, setCashAmount] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [receiptOrderId, setReceiptOrderId] = useState("");
   const [activeTab, setActiveTab] = useState<"new" | "list">("new");
+  const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([
-    { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm", items: 3, total: 75000 },
-    { id: "#4481", name: "Jung Kit", type: "Delivery", status: "Ready", time: "07-05-2025, 03:18 pm", items: 2, total: 52000 },
-    { id: "#4482", name: "John Pantau", type: "Dine in", status: "Cancel", time: "07-05-2025, 02:18 pm", items: 5, total: 128000 },
-    { id: "#4483", name: "Jane Doe", type: "Takeaway", status: "Ready", time: "07-05-2025, 01:45 pm", items: 1, total: 26000 },
-    { id: "#4484", name: "Bob Smith", type: "Dine in", status: "Waiting", time: "07-05-2025, 12:30 pm", items: 4, total: 96000 },
-    { id: "#4485", name: "Alice Chan", type: "Takeaway", status: "Done", time: "07-05-2025, 11:15 am", items: 2, total: 45000 },
+    { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm", items: 3, total: 75000, menuItems: [
+      { name: "Es Buah", qty: 1, price: 26000, variant: "Regular", sugar: "Normal Sugar", note: "Tidak pakai es batu, ganti jelly cincau dan tambahkan topping kelapa muda sebanyak-banyaknya" },
+      { name: "Nasi Goreng", qty: 2, price: 32000, variant: "Regular" },
+    ]},
+    { id: "#4481", name: "Jung Kit", type: "Delivery", status: "Ready", time: "07-05-2025, 03:18 pm", items: 2, total: 52000, menuItems: [
+      { name: "Sate Ayam", qty: 2, price: 26000 },
+    ]},
+    { id: "#4482", name: "John Pantau", type: "Dine in", status: "Cancel", time: "07-05-2025, 02:18 pm", items: 5, total: 128000, menuItems: [
+      { name: "Rendang", qty: 1, price: 45000, variant: "Large" },
+      { name: "Teh Tarik", qty: 2, price: 15000, sugar: "Less Sugar" },
+      { name: "Kerupuk", qty: 2, price: 5000 },
+    ]},
+    { id: "#4483", name: "Jane Doe", type: "Takeaway", status: "Ready", time: "07-05-2025, 01:45 pm", items: 1, total: 26000, menuItems: [
+      { name: "Es Buah", qty: 1, price: 26000, variant: "Regular", sugar: "Normal Sugar" },
+    ]},
+    { id: "#4484", name: "Bob Smith", type: "Dine in", status: "Waiting", time: "07-05-2025, 12:30 pm", items: 4, total: 96000, menuItems: [
+      { name: "Nasi Goreng", qty: 2, price: 32000, variant: "Large" },
+      { name: "Es Teh", qty: 2, price: 16000, sugar: "Less Sugar" },
+    ]},
+    { id: "#4485", name: "Alice Chan", type: "Takeaway", status: "Done", time: "07-05-2025, 11:15 am", items: 2, total: 45000, menuItems: [
+      { name: "Mie Goreng", qty: 1, price: 28000 },
+      { name: "Es Jeruk", qty: 1, price: 17000 },
+    ]},
   ]);
 
   const promoMap: Record<string, { label: string; calc: (sub: number) => number }> = {
@@ -190,10 +189,9 @@ export default function PosPage() {
     BUNDLE20: { label: "BUNDLE20", calc: (sub) => Math.round(sub * 0.2) },
   };
 
-  const filteredMenu =
-    activeCategory === "All"
-      ? menuItems
-      : menuItems.filter((item) => item.category === activeCategory);
+  const filteredMenu = menuItems
+    .filter((item) => activeCategory === "All" || item.category === activeCategory)
+    .filter((item) => item.name.toLowerCase().includes(menuSearch.toLowerCase()));
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = selectedPromo && promoMap[selectedPromo] ? promoMap[selectedPromo].calc(subtotal) : 0;
@@ -352,7 +350,10 @@ export default function PosPage() {
           {/* Orders List */}
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-base font-semibold">Orders List</h2>
-            <button className="text-xs text-muted-foreground hover:text-foreground">
+            <button
+              className="text-xs text-muted-foreground hover:text-foreground"
+              onClick={() => setActiveTab("list")}
+            >
               View all orders
             </button>
           </div>
@@ -437,6 +438,8 @@ export default function PosPage() {
               <Search className="absolute left-3 size-4 text-muted-foreground" />
               <Input
                 placeholder="Search menu"
+                value={menuSearch}
+                onChange={(e) => setMenuSearch(e.target.value)}
                 className="h-9 rounded-lg border-border bg-muted/50 pl-9 text-sm"
               />
             </div>
@@ -552,7 +555,7 @@ export default function PosPage() {
                   return (
                     <div
                       key={col.key}
-                      className="flex w-65 shrink-0 flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors"
+                      className="flex min-w-72 flex-1 flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors"
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
                         e.preventDefault();
@@ -577,7 +580,8 @@ export default function PosPage() {
                             key={order.id}
                             draggable
                             onDragStart={(e) => e.dataTransfer.setData("orderId", order.id)}
-                            className="cursor-grab border-border/60 shadow-sm active:cursor-grabbing"
+                            onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                            className="cursor-grab border-border/60 shadow-sm transition-colors hover:bg-muted/20 active:cursor-grabbing"
                           >
                             <CardContent className="p-3">
                               <div className="mb-2 flex items-center justify-between">
@@ -589,6 +593,35 @@ export default function PosPage() {
                               <div className="mt-2 flex items-center justify-between">
                                 <span className="text-xs text-muted-foreground">{order.items} items</span>
                                 <span className="text-xs font-semibold">Rp. {order.total.toLocaleString("id-ID")}</span>
+                              </div>
+                              <div
+                                className={cn(
+                                  "grid transition-all duration-300 ease-out",
+                                  expandedOrder === order.id ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+                                )}
+                              >
+                                <div className="overflow-hidden">
+                                  <hr className="mb-2 border-border/60" />
+                                  <p className="mb-2 text-xs font-semibold">Ordered Items:</p>
+                                  <div className="space-y-2">
+                                    {order.menuItems?.map((m, idx) => (
+                                      <div key={idx} className="flex items-start justify-between text-xs">
+                                        <div className="flex flex-col gap-0.5">
+                                          <span className="font-medium">{m.name} <span className="text-muted-foreground">x{m.qty}</span></span>
+                                          {m.variant && (
+                                            <span className="text-muted-foreground">({m.variant}{m.sugar ? `, ${m.sugar}` : ""})</span>
+                                          )}
+                                          {m.note && (
+                                            <span className="max-w-56 wrap-break-word text-[10px] italic leading-tight text-muted-foreground">
+                                              Note: {m.note}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <span className="shrink-0 pl-2">Rp. {(m.price * m.qty).toLocaleString("id-ID")}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
                               </div>
                             </CardContent>
                           </Card>
@@ -619,7 +652,9 @@ export default function PosPage() {
                   Customer name
                 </label>
                 <Input
-                  defaultValue="Jay Kowi"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Enter name"
                   className="h-9 rounded-lg text-sm"
                 />
               </div>
@@ -628,9 +663,9 @@ export default function PosPage() {
                   <label className="mb-1 block text-xs text-muted-foreground">
                     Order Type
                   </label>
-                  <Select defaultValue="takeaway">
+                  <Select value={orderType} onValueChange={(val) => { if (val) setOrderType(val); }}>
                     <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                      <SelectValue />
+                      <SelectValue placeholder="Select type" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="takeaway">Take Away</SelectItem>
@@ -643,14 +678,14 @@ export default function PosPage() {
                   <label className="mb-1 block text-xs text-muted-foreground">
                     Table number
                   </label>
-                  <Select>
+                  <Select value={tableNumber} onValueChange={(val) => { if (val) setTableNumber(val); }}>
                     <SelectTrigger className="h-9 w-full rounded-lg text-sm">
                       <SelectValue placeholder="Select table" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="1">Table 1</SelectItem>
                       <SelectItem value="2">Table 2</SelectItem>
-                      <SelectItem value="3">Table 3A</SelectItem>
+                      <SelectItem value="3A">Table 3A</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -893,7 +928,8 @@ export default function PosPage() {
         {/* Footer */}
         <div className="border-t p-4">
           <Button
-            className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700"
+            className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+            disabled={!customerName.trim() || !orderType || !tableNumber || cart.length === 0}
             onClick={() => setShowConfirmModal(true)}
           >
             Confirm Payment
@@ -910,16 +946,12 @@ export default function PosPage() {
             <h3 className="mb-4 text-lg font-semibold">Confirm Payment</h3>
             <div className="mb-4 space-y-2 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Items</span>
-                <span>{cart.reduce((sum, i) => sum + i.qty, 0)} items</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Total</span>
-                <span className="font-semibold">Rp. {total.toLocaleString("id-ID")}</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-muted-foreground">Payment</span>
                 <span className="capitalize">{paymentMethod}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Items</span>
+                <span>{cart.reduce((sum, i) => sum + i.qty, 0)} items</span>
               </div>
               {paymentMethod === "cash" && cashAmount && (
                 <>
@@ -927,6 +959,14 @@ export default function PosPage() {
                     <span className="text-muted-foreground">Paid</span>
                     <span>Rp. {Number(cashAmount).toLocaleString("id-ID")}</span>
                   </div>
+                </>
+              )}
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-semibold">Rp. {total.toLocaleString("id-ID")}</span>
+              </div>
+              {paymentMethod === "cash" && cashAmount && (
+                <>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Change</span>
                     <span className="font-medium text-green-600">Rp. {change.toLocaleString("id-ID")}</span>
@@ -946,13 +986,137 @@ export default function PosPage() {
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
                 onClick={() => {
                   setShowConfirmModal(false);
-                  setCart([]);
-                  setSelectedPromo("");
-                  setCashAmount("");
-                  setEditingCartItem(null);
+                  setReceiptOrderId(`#${Date.now().toString().slice(-4)}`);
+                  setShowReceiptModal(true);
                 }}
               >
                 Pay Now
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Receipt Preview Modal */}
+      {showReceiptModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">Receipt Preview</h3>
+            <div className="mx-auto mb-4 max-w-[230px] rounded border border-dashed border-muted-foreground/30 bg-white p-4 font-mono text-[11px] leading-relaxed text-black dark:bg-white dark:text-black">
+              <div className="text-center">
+                <p className="font-bold">RASA NUSA</p>
+                <p>Jl. Kemang Raya No. 12</p>
+                <p>Jakarta Selatan</p>
+                <p>--------------------------</p>
+              </div>
+              <div className="flex justify-between">
+                <span>Order</span>
+                <span>{receiptOrderId}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Date</span>
+                <span>{new Date().toLocaleDateString("id-ID")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Time</span>
+                <span>{new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Customer</span>
+                <span>{customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Type</span>
+                <span className="capitalize">{orderType}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Table</span>
+                <span>{tableNumber}</span>
+              </div>
+              <p>--------------------------</p>
+              {cart.map((item, i) => (
+                <div key={i}>
+                  <div className="flex justify-between">
+                    <span>{item.name} x{item.qty}</span>
+                    <span>Rp. {(item.price * item.qty).toLocaleString("id-ID")}</span>
+                  </div>
+                  {item.variant && (
+                    <p className="pl-2 text-[10px]">{item.variant}{item.sugar ? `, ${item.sugar}` : ""}</p>
+                  )}
+                  {item.note && (
+                    <p className="pl-2 text-[10px] italic">Note: {item.note}</p>
+                  )}
+                </div>
+              ))}
+              <p>--------------------------</p>
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span>Rp. {subtotal.toLocaleString("id-ID")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Discount</span>
+                <span>-Rp. {discount.toLocaleString("id-ID")}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tax (2%)</span>
+                <span>Rp. {taxes.toLocaleString("id-ID")}</span>
+              </div>
+              <p>--------------------------</p>
+              <div className="flex justify-between font-bold">
+                <span>TOTAL</span>
+                <span>Rp. {total.toLocaleString("id-ID")}</span>
+              </div>
+              {paymentMethod === "cash" && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Cash</span>
+                    <span>Rp. {Number(cashAmount).toLocaleString("id-ID")}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Change</span>
+                    <span>Rp. {change.toLocaleString("id-ID")}</span>
+                  </div>
+                </>
+              )}
+              <p className="mt-2 text-center">*** Thank you ***</p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => setShowReceiptModal(false)}
+              >
+                Close
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  setShowReceiptModal(false);
+                  const newOrderId = receiptOrderId;
+                  setBoardOrders((prev) => [
+                    {
+                      id: newOrderId,
+                      name: customerName,
+                      type: orderType.charAt(0).toUpperCase() + orderType.slice(1),
+                      status: "Waiting",
+                      time: new Date().toLocaleString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", ""),
+                      items: cart.reduce((sum, i) => sum + i.qty, 0),
+                      total,
+                      menuItems: cart.map((c) => ({ name: c.name, qty: c.qty, price: c.price, variant: c.variant, sugar: c.sugar, note: c.note })),
+                    },
+                    ...prev,
+                  ]);
+                  setCart([]);
+                  setCustomerName("");
+                  setOrderType("");
+                  setTableNumber("");
+                  setSelectedPromo("");
+                  setCashAmount("");
+                  setEditingCartItem(null);
+                  setMenuQuantities({});
+                }}
+              >
+                Print & Save
               </Button>
             </div>
           </div>

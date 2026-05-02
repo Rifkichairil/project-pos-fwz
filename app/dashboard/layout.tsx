@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -18,7 +21,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-  { icon: UtensilsCrossed, label: "Menu Order", href: "/dashboard/pos", active: true },
+  { icon: UtensilsCrossed, label: "Menu Order", href: "/dashboard/pos" },
   { icon: Package, label: "Inventory", href: "#" },
   { icon: Clock, label: "History", href: "#" },
   { icon: BarChart3, label: "Analytic", href: "#" },
@@ -33,6 +36,7 @@ const bottomNav = [
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   return (
     <div className="flex h-screen w-full bg-background">
       {/* Sidebar */}
@@ -50,24 +54,27 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
         {/* Nav */}
         <nav className="flex-1 space-y-0.5 px-3 py-2">
-          {navItems.map((item) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
-                item.active
-                  ? "bg-primary/10 font-medium text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              )}
-            >
-              <item.icon className="size-4" />
-              <span>{item.label}</span>
-              {item.hasSubmenu && (
-                <ChevronDown className="ml-auto size-4" />
-              )}
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const isActive = pathname === item.href || (item.href !== "#" && pathname.startsWith(item.href + "/"));
+            return (
+              <Link
+                key={item.label}
+                href={item.href}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
+                  isActive
+                    ? "bg-primary/10 font-medium text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <item.icon className="size-4" />
+                <span>{item.label}</span>
+                {item.hasSubmenu && (
+                  <ChevronDown className="ml-auto size-4" />
+                )}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* Bottom */}
