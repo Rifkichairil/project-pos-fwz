@@ -3,33 +3,32 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   UtensilsCrossed,
   Package,
   Clock,
-  BarChart3,
-  Wallet,
   Table,
-  CreditCard,
   Users,
   Settings,
   HelpCircle,
   ChevronDown,
+  BookOpen,
+  X,
+  Menu,
 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: UtensilsCrossed, label: "Menu Order", href: "/pos" },
-  { icon: Package, label: "Inventory", href: "#" },
-  { icon: Clock, label: "History", href: "#" },
-  { icon: BarChart3, label: "Analytic", href: "#" },
-  { icon: Wallet, label: "Withdraw", href: "#" },
-  { icon: Table, label: "Manage Table", href: "#", hasSubmenu: true },
-  { icon: CreditCard, label: "Payment", href: "#" },
+  { icon: Package, label: "Inventory", href: "/inventory" },
   { icon: Users, label: "Member", href: "/member" },
+  { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
+  { icon: Table, label: "Manage Table", href: "#", hasSubmenu: true },
+  { icon: Clock, label: "History", href: "#" },
 ];
 
 const bottomNav = [
@@ -39,19 +38,35 @@ const bottomNav = [
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
     <div className="flex h-screen w-full bg-background">
+      {/* Mobile Overlay */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* Sidebar */}
-      <aside className="flex w-[240px] shrink-0 flex-col border-r bg-background">
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-[240px] shrink-0 flex-col border-r bg-background transition-transform duration-300 lg:static lg:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+      >
         {/* Logo */}
         <div className="flex h-16 items-center gap-2 px-5">
           <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <span className="text-sm font-bold">R</span>
           </div>
           <span className="text-lg font-bold">Rasa Nusa</span>
-          <div className="ml-auto flex size-7 items-center justify-center rounded-md border">
-            <span className="text-xs">☰</span>
-          </div>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="ml-auto flex size-7 items-center justify-center rounded-md border lg:hidden"
+          >
+            <X className="size-4" />
+          </button>
         </div>
 
         {/* Nav */}
@@ -64,6 +79,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Link
                 key={item.label}
                 href={item.href}
+                onClick={() => setSidebarOpen(false)}
                 className={cn(
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors",
                   isActive
@@ -114,7 +130,25 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* Main */}
-      <main className="flex flex-1 flex-col overflow-hidden">{children}</main>
+      <main className="flex flex-1 flex-col overflow-hidden">
+        {/* Mobile Header */}
+        <div className="flex h-16 items-center gap-4 border-b bg-background px-4 lg:hidden">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex size-9 items-center justify-center rounded-md border"
+          >
+            <Menu className="size-5" />
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <span className="text-sm font-bold">R</span>
+            </div>
+            <span className="text-lg font-bold">Rasa Nusa</span>
+          </div>
+        </div>
+        {/* Content */}
+        <div className="flex-1 overflow-hidden">{children}</div>
+      </main>
     </div>
   );
 }

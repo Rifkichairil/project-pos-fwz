@@ -16,6 +16,7 @@ import {
 import {
   Search,
   ShoppingBag,
+  ShoppingCart,
   Trash2,
   Pencil,
   Minus,
@@ -25,6 +26,8 @@ import {
   RotateCcw,
   Wallet,
   ArrowUpDown,
+  Users,
+  User,
 } from "lucide-react";
 
 interface CartItem {
@@ -51,90 +54,195 @@ interface BoardOrder {
 
 const categories = ["All", "Appetizer", "Main Dish", "Beverage", "Snack", "Dessert"];
 
+const memberList = [
+  { id: 1, name: "Budi Santoso", phone: "0812-3456-7890" },
+  { id: 2, name: "Siti Aminah", phone: "0821-9876-5432" },
+  { id: 3, name: "Ahmad Hidayat", phone: "0856-1234-5678" },
+  { id: 4, name: "Dewi Kusuma", phone: "0813-5678-9012" },
+  { id: 5, name: "Rudi Hartono", phone: "0877-4455-6677" },
+  { id: 6, name: "Lina Marlina", phone: "0899-1122-3344" },
+];
+
 const menuItems = [
+  // Main Dish
   {
     id: 1,
-    name: "Es Buah",
-    price: 26000,
-    image: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&q=80",
-    category: "Beverage",
-  },
-  {
-    id: 2,
-    name: "Es Cincau",
-    price: 20000,
-    image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&q=80",
-    category: "Beverage",
-  },
-  {
-    id: 3,
-    name: "Es Cendol Ijo",
-    price: 20000,
-    image: "https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&q=80",
-    category: "Beverage",
-  },
-  {
-    id: 4,
-    name: "Es Pisang Ijo",
-    price: 25000,
-    image: "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=400&q=80",
-    category: "Dessert",
-  },
-  {
-    id: 5,
-    name: "Es Kelapa Muda",
-    price: 22000,
-    image: "https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=400&q=80",
-    category: "Beverage",
-  },
-  {
-    id: 6,
-    name: "Es Teler",
-    price: 28000,
-    image: "https://images.unsplash.com/photo-1505253758473-96b701f8fb89?w=400&q=80",
-    category: "Dessert",
-  },
-  {
-    id: 7,
     name: "Nasi Goreng",
     price: 35000,
     image: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&q=80",
     category: "Main Dish",
   },
   {
-    id: 8,
-    name: "Mie Goreng",
-    price: 32000,
-    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&q=80",
-    category: "Main Dish",
-  },
-  {
-    id: 9,
+    id: 4,
     name: "Ayam Goreng",
     price: 40000,
     image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400&q=80",
     category: "Main Dish",
   },
   {
-    id: 10,
+    id: 5,
+    name: "Mie Goreng",
+    price: 32000,
+    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&q=80",
+    category: "Main Dish",
+  },
+  {
+    id: 6,
     name: "Sate Ayam",
     price: 38000,
     image: "https://images.unsplash.com/photo-1529563021893-cc83c992d75d?w=400&q=80",
     category: "Main Dish",
   },
   {
-    id: 11,
-    name: "Rujak Buah",
-    price: 18000,
-    image: "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=400&q=80",
-    category: "Appetizer",
+    id: 7,
+    name: "Rendang",
+    price: 55000,
+    image: "https://images.unsplash.com/photo-1606387015493-1d4b047b659c?w=400&q=80",
+    category: "Main Dish",
+  },
+  // Beverage
+  {
+    id: 2,
+    name: "Kopi Susu",
+    price: 22000,
+    image: "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&q=80",
+    category: "Beverage",
   },
   {
-    id: 12,
+    id: 3,
+    name: "Es Buah",
+    price: 26000,
+    image: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&q=80",
+    category: "Beverage",
+  },
+  {
+    id: 8,
+    name: "Es Teh",
+    price: 8000,
+    image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&q=80",
+    category: "Beverage",
+  },
+  {
+    id: 9,
+    name: "Jus Jeruk",
+    price: 18000,
+    image: "https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&q=80",
+    category: "Beverage",
+  },
+  {
+    id: 10,
+    name: "Kopi Hitam",
+    price: 15000,
+    image: "https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=80",
+    category: "Beverage",
+  },
+  // Appetizer
+  {
+    id: 11,
     name: "Gado-Gado",
     price: 25000,
     image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400&q=80",
     category: "Appetizer",
+  },
+  {
+    id: 12,
+    name: "Bakso",
+    price: 28000,
+    image: "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=400&q=80",
+    category: "Appetizer",
+  },
+  {
+    id: 13,
+    name: "Soto",
+    price: 30000,
+    image: "https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=400&q=80",
+    category: "Appetizer",
+  },
+  {
+    id: 14,
+    name: "Lumpia",
+    price: 20000,
+    image: "https://images.unsplash.com/photo-1505253758473-96b701f8fb89?w=400&q=80",
+    category: "Appetizer",
+  },
+  {
+    id: 15,
+    name: "Risoles",
+    price: 18000,
+    image: "https://images.unsplash.com/photo-1563245372-f21724e3856d?w=400&q=80",
+    category: "Appetizer",
+  },
+  // Snack
+  {
+    id: 16,
+    name: "Klepon",
+    price: 15000,
+    image: "https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&q=80",
+    category: "Snack",
+  },
+  {
+    id: 17,
+    name: "Onde-Onde",
+    price: 16000,
+    image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&q=80",
+    category: "Snack",
+  },
+  {
+    id: 18,
+    name: "Pisang Goreng",
+    price: 18000,
+    image: "https://images.unsplash.com/photo-1558857563-b371033873b8?w=400&q=80",
+    category: "Snack",
+  },
+  {
+    id: 19,
+    name: "Roti Bakar",
+    price: 20000,
+    image: "https://images.unsplash.com/photo-1563729784474-d77dbb933a9e?w=400&q=80",
+    category: "Snack",
+  },
+  {
+    id: 20,
+    name: "Martabak",
+    price: 25000,
+    image: "https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=400&q=80",
+    category: "Snack",
+  },
+  // Dessert
+  {
+    id: 21,
+    name: "Es Krim",
+    price: 25000,
+    image: "https://images.unsplash.com/photo-1505253758473-96b701f8fb89?w=400&q=80",
+    category: "Dessert",
+  },
+  {
+    id: 22,
+    name: "Pudding",
+    price: 20000,
+    image: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&q=80",
+    category: "Dessert",
+  },
+  {
+    id: 23,
+    name: "Bolu",
+    price: 35000,
+    image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400&q=80",
+    category: "Dessert",
+  },
+  {
+    id: 24,
+    name: "Donat",
+    price: 22000,
+    image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=400&q=80",
+    category: "Dessert",
+  },
+  {
+    id: 25,
+    name: "Cake",
+    price: 45000,
+    image: "https://images.unsplash.com/photo-1529563021893-cc83c992d75d?w=400&q=80",
+    category: "Dessert",
   },
 ];
 
@@ -144,6 +252,7 @@ export default function PosPage() {
   const [menuQuantities, setMenuQuantities] = useState<Record<number, number>>({});
   const [menuSearch, setMenuSearch] = useState("");
   const [customerName, setCustomerName] = useState("");
+  const [isMember, setIsMember] = useState(false);
   const [orderType, setOrderType] = useState("");
   const [tableNumber, setTableNumber] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<Record<number, string>>({});
@@ -157,6 +266,7 @@ export default function PosPage() {
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [activeTab, setActiveTab] = useState<"new" | "list">("new");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
+  const [cartOpen, setCartOpen] = useState(false);
   const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([
     { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm", items: 3, total: 75000, menuItems: [
       { name: "Es Buah", qty: 1, price: 26000, variant: "Regular", sugar: "Normal Sugar", note: "Tidak pakai es batu, ganti jelly cincau dan tambahkan topping kelapa muda sebanyak-banyaknya" },
@@ -298,19 +408,19 @@ export default function PosPage() {
       {/* Main Content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex h-16 items-center gap-4 border-b px-6">
-          <h1 className="text-lg font-semibold">Welcome, Jennie Doe</h1>
-          <div className="relative ml-auto flex w-80 items-center">
+        <header className="flex h-16 items-center gap-3 border-b px-4 sm:gap-4 sm:px-6">
+          <h1 className="text-base font-semibold sm:text-lg">Welcome, Jennie Doe</h1>
+          <div className="relative ml-auto hidden sm:flex w-64 items-center">
             <Search className="absolute left-3 size-4 text-muted-foreground" />
             <Input
               placeholder="Search anything"
               className="h-9 rounded-lg border-border bg-muted/50 pl-9 text-sm"
             />
           </div>
-          <div className="flex items-center gap-3 text-muted-foreground">
+          <div className="flex items-center gap-2 sm:gap-3 text-muted-foreground">
             <RotateCcw className="size-4" />
             <Bell className="size-4" />
-            <div className="flex items-center gap-1.5 text-sm">
+            <div className="hidden sm:flex items-center gap-1.5 text-sm">
               <Calendar className="size-4" />
               <span>07 Mei 2025</span>
             </div>
@@ -318,11 +428,11 @@ export default function PosPage() {
         </header>
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b px-6 pt-4">
+        <div className="flex gap-1 border-b px-4 pt-4 sm:px-6">
           <button
             onClick={() => setActiveTab("new")}
             className={cn(
-              "rounded-t-lg px-4 py-2 text-sm font-medium transition-colors",
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
               activeTab === "new"
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -333,7 +443,7 @@ export default function PosPage() {
           <button
             onClick={() => setActiveTab("list")}
             className={cn(
-              "rounded-t-lg px-4 py-2 text-sm font-medium transition-colors",
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
               activeTab === "list"
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -344,7 +454,20 @@ export default function PosPage() {
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+          {/* Mobile Cart Toggle */}
+          <button
+            onClick={() => setCartOpen(true)}
+            className="lg:hidden fixed bottom-4 right-4 z-30 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg"
+          >
+            <ShoppingCart className="size-6" />
+            {cart.length > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                {cart.length}
+              </span>
+            )}
+          </button>
+
           {activeTab === "new" ? (
             <>
           {/* Orders List */}
@@ -358,7 +481,7 @@ export default function PosPage() {
             </button>
           </div>
 
-          <div className="mb-8 grid grid-cols-5 gap-4">
+          <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 2xl:gap-4">
             <Card className="border-border/60">
               <CardContent className="p-4">
                 <div className="mb-3 flex items-center justify-between">
@@ -432,9 +555,9 @@ export default function PosPage() {
           </div>
 
           {/* Menu List */}
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-base font-semibold">Menu List</h2>
-            <div className="relative flex w-64 items-center">
+            <div className="relative flex w-full items-center sm:w-64">
               <Search className="absolute left-3 size-4 text-muted-foreground" />
               <Input
                 placeholder="Search menu"
@@ -446,15 +569,15 @@ export default function PosPage() {
           </div>
 
           {/* Categories */}
-          <div className="mb-4 flex gap-2">
+          <div className="mb-4 flex gap-2 flex-wrap">
             {categories.map((cat) => (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
                 className={
                   cat === activeCategory
-                    ? "rounded-full bg-foreground px-4 py-1.5 text-sm font-medium text-background"
-                    : "rounded-full px-4 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    ? "rounded-full bg-foreground px-3 py-1.5 text-xs sm:px-4 sm:py-1.5 sm:text-sm font-medium text-background whitespace-nowrap"
+                    : "rounded-full px-3 py-1.5 text-xs sm:px-4 sm:py-1.5 sm:text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground whitespace-nowrap"
                 }
               >
                 {cat}
@@ -463,10 +586,10 @@ export default function PosPage() {
           </div>
 
           {/* Menu Grid */}
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
             {filteredMenu.map((item) => (
-              <Card key={item.id} className="flex h-full flex-col gap-0 overflow-hidden rounded-none border-0 py-0 shadow-none">
-                <div className="relative aspect-square w-full overflow-hidden">
+              <Card key={item.id} className="flex flex-col gap-0 overflow-hidden rounded-none border-0 py-0 shadow-none">
+                <div className="relative aspect-square w-full overflow-hidden shrink-0">
                   <img
                     src={item.image}
                     alt={item.name}
@@ -475,19 +598,19 @@ export default function PosPage() {
                     className="block h-full w-full object-cover object-center"
                   />
                 </div>
-                <CardContent className="p-3">
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-sm font-semibold">
+                <CardContent className="p-2">
+                  <p className="text-sm font-medium leading-tight">{item.name}</p>
+                  <p className="text-sm font-semibold leading-tight">
                     Rp. {item.price.toLocaleString("id-ID")}
                   </p>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-1 flex gap-1.5">
                     <Select
                       value={selectedVariants[item.id] || "regular"}
                       onValueChange={(val) => {
                         if (val) setSelectedVariants((prev) => ({ ...prev, [item.id]: val }));
                       }}
                     >
-                      <SelectTrigger className="h-7 flex-1 text-xs">
+                      <SelectTrigger className="h-6 flex-1 text-xs px-2">
                         <SelectValue placeholder="Regular" />
                       </SelectTrigger>
                       <SelectContent>
@@ -501,7 +624,7 @@ export default function PosPage() {
                         if (val) setSelectedSugar((prev) => ({ ...prev, [item.id]: val }));
                       }}
                     >
-                      <SelectTrigger className="h-7 flex-1 text-xs">
+                      <SelectTrigger className="h-6 flex-1 text-xs px-2">
                         <SelectValue placeholder="Normal Sugar" />
                       </SelectTrigger>
                       <SelectContent>
@@ -510,30 +633,30 @@ export default function PosPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="mt-1.5 flex items-center justify-between gap-1.5">
                     <div className="flex items-center rounded-lg border">
                       <button
                         onClick={() => updateMenuQty(item.id, -1)}
-                        className="flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+                        className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground"
                       >
                         <Minus className="size-3" />
                       </button>
-                      <span className="w-6 text-center text-sm">
+                      <span className="w-5 text-center text-sm">
                         {menuQuantities[item.id] || 0}
                       </span>
                       <button
                         onClick={() => updateMenuQty(item.id, 1)}
-                        className="flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-foreground"
+                        className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground"
                       >
                         <Plus className="size-3" />
                       </button>
                     </div>
                     <Button
                       variant="outline"
-                      className="h-8 flex-1 rounded-lg text-xs"
+                      className="h-7 w-7 flex-none rounded-lg p-0"
                       onClick={() => addToCart(item)}
                     >
-                      + Add to cart
+                      <Plus className="size-3.5" />
                     </Button>
                   </div>
                 </CardContent>
@@ -637,7 +760,20 @@ export default function PosPage() {
       </div>
 
       {activeTab === "new" && (
-      <aside className="flex w-[340px] shrink-0 flex-col border-l bg-background">
+      <>
+      {/* Mobile Overlay */}
+      {cartOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+          onClick={() => setCartOpen(false)}
+        />
+      )}
+      <aside
+        className={cn(
+          "flex w-[340px] shrink-0 flex-col border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 lg:static lg:translate-x-0 lg:z-auto",
+          cartOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
+        )}
+      >
         <div className="border-b p-4">
           <h2 className="text-base font-semibold">Order Details</h2>
         </div>
@@ -645,18 +781,53 @@ export default function PosPage() {
         <div className="flex-1 overflow-y-auto p-4">
           {/* Customer Info */}
           <div className="mb-4">
-            <h3 className="mb-3 text-sm font-semibold">Customer Information</h3>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">Customer Information</h3>
+              <div className="flex overflow-hidden rounded-lg border">
+                <button
+                  onClick={() => { setIsMember(false); setCustomerName(""); }}
+                  className={cn(
+                    "flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    !isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <User className="size-3" /> Guest
+                </button>
+                <button
+                  onClick={() => { setIsMember(true); setCustomerName(""); }}
+                  className={cn(
+                    "flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors",
+                    isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+                  )}
+                >
+                  <Users className="size-3" /> Member
+                </button>
+              </div>
+            </div>
             <div className="space-y-3">
               <div>
                 <label className="mb-1 block text-xs text-muted-foreground">
                   Customer name
                 </label>
-                <Input
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Enter name"
-                  className="h-9 rounded-lg text-sm"
-                />
+                {isMember ? (
+                  <Select value={customerName} onValueChange={(val) => { if (val) setCustomerName(val); }}>
+                    <SelectTrigger className="h-9 w-full rounded-lg text-sm">
+                      <SelectValue placeholder="Select member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {memberList.map((m) => (
+                        <SelectItem key={m.id} value={m.name}>{m.name} — {m.phone}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Enter name"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -936,6 +1107,7 @@ export default function PosPage() {
           </Button>
         </div>
       </aside>
+      </>
       )}
     </div>
 

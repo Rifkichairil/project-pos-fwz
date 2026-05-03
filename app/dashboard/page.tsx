@@ -119,20 +119,21 @@ export default function DashboardPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
-      <header className="flex h-16 items-center justify-between border-b px-6">
-        <h1 className="text-lg font-semibold">Dashboard</h1>
+      <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
+        <h1 className="text-base font-semibold sm:text-lg">Dashboard</h1>
         <Link href="/pos">
-          <Button className="h-9 gap-2 rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700">
-            <Plus className="size-4" />
-            New Order
+          <Button className="h-8 gap-2 rounded-xl bg-blue-600 px-3 text-xs font-medium hover:bg-blue-700 sm:h-9 sm:px-4 sm:text-sm">
+            <Plus className="size-3.5 sm:size-4" />
+            <span className="hidden sm:inline">New Order</span>
+            <span className="sm:hidden">Order</span>
           </Button>
         </Link>
       </header>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {/* Period Filter */}
-        <div className="mb-4 flex items-center gap-2">
+        <div className="mb-4 flex flex-wrap items-center gap-2">
           {periods.map((p) => (
             <Button
               key={p.value}
@@ -153,7 +154,7 @@ export default function DashboardPage() {
           </div>
         </div>
         {/* Stats */}
-        <div className="mb-6 grid grid-cols-5 gap-4">
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           {stats.map((s) => (
             <Card key={s.label} className="relative overflow-hidden border-border/60">
               {/* Background Icon */}
@@ -161,21 +162,21 @@ export default function DashboardPage() {
                 className="absolute -bottom-1 right-2 size-24 opacity-[0.06]"
                 strokeWidth={1.2}
               />
-              <CardContent className="relative z-10 p-4">
+              <CardContent className="relative z-10 p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-muted-foreground">{s.label}</span>
-                  <div className="flex items-center gap-0.5 text-[11px]">
+                  <span className="text-[10px] text-muted-foreground sm:text-[11px]">{s.label}</span>
+                  <div className="flex items-center gap-0.5 text-[10px] sm:text-[11px]">
                     {s.trend === "up" ? (
-                      <TrendingUp className="size-3 text-emerald-500" />
+                      <TrendingUp className="size-2.5 text-emerald-500 sm:size-3" />
                     ) : (
-                      <TrendingDown className="size-3 text-red-500" />
+                      <TrendingDown className="size-2.5 text-red-500 sm:size-3" />
                     )}
                     <span className={s.trend === "up" ? "text-emerald-600" : "text-red-600"}>
                       {s.change}
                     </span>
                   </div>
                 </div>
-                <p className="mt-1 text-lg font-semibold">{s.value}</p>
+                <p className="mt-1 text-base font-semibold sm:text-lg">{s.value}</p>
               </CardContent>
             </Card>
           ))}
@@ -184,7 +185,7 @@ export default function DashboardPage() {
         {/* Revenue Breakdown */}
         <Card className="mb-6 border-border/60">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-semibold">Revenue Breakdown by Payment</CardTitle>
+            <CardTitle className="text-xs font-semibold sm:text-sm">Revenue Breakdown by Payment</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-3 flex h-5 overflow-hidden rounded-full">
@@ -197,7 +198,7 @@ export default function DashboardPage() {
                 />
               ))}
             </div>
-            <div className="flex flex-wrap gap-6">
+            <div className="flex flex-wrap gap-4 sm:gap-6">
               {revenueByPayment.map((p) => (
                 <div key={p.label} className="flex items-center gap-2">
                   <div className={`size-3 rounded-full ${p.color}`} />
@@ -211,26 +212,26 @@ export default function DashboardPage() {
         </Card>
 
         {/* Charts */}
-        <div className="mb-6 grid grid-cols-2 gap-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Sales per Hari (7 hari) */}
           <Card className="border-border/60">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Sales per Hari (7 Hari Terakhir)</CardTitle>
+              <CardTitle className="text-xs font-semibold sm:text-sm">Sales per Hari (7 Hari Terakhir)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-end gap-2 pt-2" style={{ height: 160 }}>
+              <div className="flex items-end gap-1.5 pt-2" style={{ height: 140 }}>
                 {sales7Days.map((d) => (
                   <div key={d.day} className="flex flex-1 flex-col items-center gap-1">
                     <div
                       className="w-full rounded-t bg-primary/70 transition-all hover:bg-primary"
                       style={{ height: `${(d.val / max7) * 100}%` }}
                     />
-                    <span className="text-[10px] text-muted-foreground">{d.day}</span>
+                    <span className="text-[9px] text-muted-foreground sm:text-[10px]">{d.day}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-muted/30 p-2 text-[11px] text-muted-foreground">
-                <ArrowUpRight className="mt-0.5 size-3 shrink-0 text-emerald-500" />
+              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-muted/30 p-2 text-[10px] text-muted-foreground sm:text-[11px]">
+                <ArrowUpRight className="mt-0.5 size-2.5 shrink-0 text-emerald-500 sm:size-3" />
                 <span>Sabtu paling rame. Hari ini (Kam) sepi 37% vs Sabtu — pertimbangkan promo sore untuk dorong transaksi.</span>
               </div>
             </CardContent>
@@ -239,22 +240,22 @@ export default function DashboardPage() {
           {/* Sales per Jam (hari ini) */}
           <Card className="border-border/60">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold">Sales per Jam (Hari Ini)</CardTitle>
+              <CardTitle className="text-xs font-semibold sm:text-sm">Sales per Jam (Hari Ini)</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex items-end gap-1 pt-2" style={{ height: 160 }}>
+              <div className="flex items-end gap-0.5 pt-2" style={{ height: 140 }}>
                 {salesPerJam.map((d) => (
                   <div key={d.jam} className="flex flex-1 flex-col items-center gap-1">
                     <div
                       className="w-full rounded-t bg-amber-500/70 transition-all hover:bg-amber-500"
                       style={{ height: `${(d.val / maxJam) * 100}%` }}
                     />
-                    <span className="text-[10px] text-muted-foreground">{d.jam}</span>
+                    <span className="text-[9px] text-muted-foreground sm:text-[10px]">{d.jam}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-muted/30 p-2 text-[11px] text-muted-foreground">
-                <ArrowUpRight className="mt-0.5 size-3 shrink-0 text-amber-500" />
+              <div className="mt-3 flex items-start gap-1.5 rounded-lg bg-muted/30 p-2 text-[10px] text-muted-foreground sm:text-[11px]">
+                <ArrowUpRight className="mt-0.5 size-2.5 shrink-0 text-amber-500 sm:size-3" />
                 <span>Peak jam 12 siang (890 trx). Siapkan 2 kasir di jam 11-13 & 17-19 untuk antrian.</span>
               </div>
             </CardContent>
@@ -262,11 +263,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Best & Worst Menu */}
-        <div className="mb-6 grid grid-cols-2 gap-4">
+        <div className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
           {/* Best Seller */}
           <Card className="border-border/60">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold sm:text-sm">
                 <span className="inline-block size-2 rounded-full bg-emerald-500" />
                 Best Seller
               </CardTitle>
@@ -292,7 +293,7 @@ export default function DashboardPage() {
           {/* Least Selling */}
           <Card className="border-border/60">
             <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+              <CardTitle className="flex items-center gap-2 text-xs font-semibold sm:text-sm">
                 <span className="inline-block size-2 rounded-full bg-red-500" />
                 Least Selling
               </CardTitle>

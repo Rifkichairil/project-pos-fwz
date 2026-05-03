@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Plus, Search, Star, UtensilsCrossed, Clock, ShoppingCart, Gift, Wallet } from "lucide-react";
-
-const tabs = ["Member List", "Overview", "Tiers", "Roles"] as const;
+import { cn } from "@/lib/utils";
 
 const members = [
   { id: 1, name: "Budi Santoso", email: "budi.s@email.com", phone: "0812-3456-7890", location: "Jakarta", tier: "Gold", points: 2134, visits: 48, totalSpending: 2847000, lastVisit: "02 Mei 2026", favoriteMenu: "Nasi Goreng",
@@ -93,7 +92,6 @@ function nextTier(current: string) {
 }
 
 export default function MemberPage() {
-  const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Member List");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMember, setSelectedMember] = useState<(typeof members)[number] | null>(null);
 
@@ -106,37 +104,26 @@ export default function MemberPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex h-16 items-center justify-between border-b px-6">
-        <h1 className="text-lg font-semibold">Member Management</h1>
-        <Button className="h-9 gap-2 rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700">
-          <Plus className="size-4" /> Add Member
+      <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
+        <h1 className="text-base font-semibold sm:text-lg">Member Management</h1>
+        <Button className="h-8 gap-2 rounded-xl bg-blue-600 px-3 text-xs font-medium hover:bg-blue-700 sm:h-9 sm:px-4 sm:text-sm">
+          <Plus className="size-3.5 sm:size-4" />
+          <span className="hidden sm:inline">Add Member</span>
+          <span className="sm:hidden">Add</span>
         </Button>
       </header>
 
-      <div className="flex items-center gap-1 border-b px-6 pt-2">
-        {tabs.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`relative px-3 pb-2 text-sm font-medium transition-colors ${activeTab === tab ? "text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-          >
-            {tab}
-            {activeTab === tab && <span className="absolute bottom-0 left-0 h-0.5 w-full rounded-full bg-primary" />}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col overflow-y-auto p-6">
-          <div className="mb-4 flex items-center gap-2">
+        <div className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-2">
             <div className="flex items-center gap-2">
-              <div className="relative">
+              <div className="relative w-full sm:w-56">
                 <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search member..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 w-56 rounded-lg border-border bg-muted/50 pl-8 text-xs"
+                  className="h-8 w-full rounded-lg border-border bg-muted/50 pl-8 text-xs"
                 />
               </div>
               <Button size="sm" className="h-8 rounded-lg text-xs">Search</Button>
@@ -145,7 +132,7 @@ export default function MemberPage() {
 
           <p className="mb-3 text-xs text-muted-foreground">Showing {filtered.length} results</p>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {filtered.map((m) => (
               <Card
                 key={m.id}
@@ -181,7 +168,19 @@ export default function MemberPage() {
           </div>
         </div>
 
-        <aside className="w-[28rem] shrink-0 overflow-y-auto border-l">
+        {/* Mobile Overlay */}
+        {selectedMember && (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setSelectedMember(null)}
+          />
+        )}
+        <aside
+          className={cn(
+            "w-[28rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 lg:static lg:translate-x-0 lg:z-auto",
+            selectedMember ? "translate-x-0" : "translate-x-full lg:translate-x-0"
+          )}
+        >
           {selectedMember ? (
             <div className="p-6">
               {/* 1. Membership Tier — Paling atas */}
