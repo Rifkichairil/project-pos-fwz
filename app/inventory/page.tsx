@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
@@ -64,10 +65,45 @@ export default function InventoryPage() {
   const [showAddIngredient, setShowAddIngredient] = useState(false);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddMovement, setShowAddMovement] = useState(false);
+  const [showRestock, setShowRestock] = useState(false);
 
   const [newIngredient, setNewIngredient] = useState({ name: "", unit: "", price: "", supplier: "", stock: "", minStock: "" });
   const [newPurchase, setNewPurchase] = useState({ item: "", qty: "", unit: "", price: "", supplier: "", date: "" });
   const [newMovement, setNewMovement] = useState({ item: "", type: "in" as "in" | "out", qty: "", unit: "", ref: "", user: "" });
+  const [restock, setRestock] = useState({ ingredientId: "", qty: "", ref: "" });
+
+  const closeAllModals = () => {
+    setShowAddIngredient(false);
+    setShowAddPurchase(false);
+    setShowAddMovement(false);
+    setShowRestock(false);
+    setNewIngredient({ name: "", unit: "", price: "", supplier: "", stock: "", minStock: "" });
+    setNewPurchase({ item: "", qty: "", unit: "", price: "", supplier: "", date: "" });
+    setNewMovement({ item: "", type: "in" as "in" | "out", qty: "", unit: "", ref: "", user: "" });
+    setRestock({ ingredientId: "", qty: "", ref: "" });
+  };
+
+  const formatPrice = (val: string) => {
+    const digits = val.replace(/\D/g, "");
+    if (!digits) return "";
+    return Number(digits).toLocaleString("id-ID");
+  };
+
+  const parsePrice = (val: string) => Number(val.replace(/\./g, ""));
+
+  const clampQty = (val: string) => {
+    const num = Number(val.replace(/\D/g, ""));
+    if (!val) return "";
+    return String(Math.max(1, num));
+  };
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeAllModals();
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, []);
 
   const filteredIngredients = ingredientsData.filter((i) =>
     i.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -83,20 +119,19 @@ export default function InventoryPage() {
       id,
       name: newIngredient.name,
       unit: newIngredient.unit,
-      price: Number(newIngredient.price),
+      price: parsePrice(newIngredient.price),
       supplier: newIngredient.supplier,
       stock: Number(newIngredient.stock) || 0,
       minStock: Number(newIngredient.minStock) || 0,
     }]);
-    setNewIngredient({ name: "", unit: "", price: "", supplier: "", stock: "", minStock: "" });
-    setShowAddIngredient(false);
+    closeAllModals();
   };
 
   const handleAddPurchase = () => {
     if (!newPurchase.item || !newPurchase.qty || !newPurchase.price) return;
     const id = `PO-2026-${String(purchasesData.length + 1).padStart(3, "0")}`;
     const qty = Number(newPurchase.qty);
-    const price = Number(newPurchase.price);
+    const price = parsePrice(newPurchase.price);
     setPurchasesData([...purchasesData, {
       id,
       date: newPurchase.date || new Date().toLocaleDateString("id-ID"),
@@ -107,8 +142,7 @@ export default function InventoryPage() {
       total: qty * price,
       supplier: newPurchase.supplier || "-",
     }]);
-    setNewPurchase({ item: "", qty: "", unit: "", price: "", supplier: "", date: "" });
-    setShowAddPurchase(false);
+    closeAllModals();
   };
 
   const handleAddMovement = () => {
@@ -124,8 +158,29 @@ export default function InventoryPage() {
       ref: newMovement.ref || "-",
       user: newMovement.user || "Admin",
     }]);
-    setNewMovement({ item: "", type: "in", qty: "", unit: "", ref: "", user: "" });
-    setShowAddMovement(false);
+    closeAllModals();
+  };
+
+  const handleRestock = () => {
+    if (!restock.ingredientId || !restock.qty) return;
+    const qty = Number(restock.qty);
+    const ing = ingredientsData.find(i => i.id === Number(restock.ingredientId));
+    if (!ing) return;
+    setIngredientsData(ingredientsData.map(i =>
+      i.id === Number(restock.ingredientId) ? { ...i, stock: i.stock + qty } : i
+    ));
+    const id = `MV-${String(movementsData.length + 1).padStart(3, "0")}`;
+    setMovementsData([...movementsData, {
+      id,
+      date: new Date().toLocaleDateString("id-ID"),
+      item: ing.name,
+      type: "in" as const,
+      qty,
+      unit: ing.unit,
+      ref: restock.ref || "Restock",
+      user: "Admin",
+    }]);
+    closeAllModals();
   };
 
   return (
@@ -139,6 +194,7 @@ export default function InventoryPage() {
             if (activeTab === "ingredients") setShowAddIngredient(true);
             else if (activeTab === "purchase") setShowAddPurchase(true);
             else if (activeTab === "movement") setShowAddMovement(true);
+            else if (activeTab === "stock") setShowRestock(true);
           }}
         >
           <Plus className="size-3.5 sm:size-4" />
@@ -420,20 +476,68 @@ export default function InventoryPage() {
           <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Add Ingredient</h2>
-              <button onClick={() => setShowAddIngredient(false)} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={closeAllModals} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
             <div className="space-y-3">
-              <Input placeholder="Name" value={newIngredient.name} onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })} />
-              <Input placeholder="Unit (e.g. gram, ml, pcs)" value={newIngredient.unit} onChange={(e) => setNewIngredient({ ...newIngredient, unit: e.target.value })} />
-              <Input placeholder="Price" type="number" value={newIngredient.price} onChange={(e) => setNewIngredient({ ...newIngredient, price: e.target.value })} />
-              <Input placeholder="Supplier" value={newIngredient.supplier} onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })} />
-              <Input placeholder="Stock" type="number" value={newIngredient.stock} onChange={(e) => setNewIngredient({ ...newIngredient, stock: e.target.value })} />
-              <Input placeholder="Min Stock" type="number" value={newIngredient.minStock} onChange={(e) => setNewIngredient({ ...newIngredient, minStock: e.target.value })} />
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Name</Label>
+                <Input placeholder="e.g. Kopi Arabica" value={newIngredient.name} onChange={(e) => setNewIngredient({ ...newIngredient, name: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Unit</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={newIngredient.unit}
+                    onChange={(e) => setNewIngredient({ ...newIngredient, unit: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    <option value="gram">gram</option>
+                    <option value="ml">ml</option>
+                    <option value="pcs">pcs</option>
+                    <option value="kg">kg</option>
+                    <option value="liter">liter</option>
+                    <option value="pack">pack</option>
+                    <option value="box">box</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Price</Label>
+                  <Input placeholder="e.g. 50.000" type="text" inputMode="numeric" value={formatPrice(newIngredient.price)} onChange={(e) => setNewIngredient({ ...newIngredient, price: formatPrice(e.target.value) })} />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Supplier</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={newIngredient.supplier}
+                  onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })}
+                >
+                  <option value="">Select supplier...</option>
+                  {[...new Set(ingredientsData.map(i => i.supplier))].map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
+                {newIngredient.supplier === "Other" && (
+                  <Input placeholder="Enter supplier name" className="mt-2" value={newIngredient.supplier === "Other" ? "" : newIngredient.supplier} onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })} />
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Stock</Label>
+                  <Input placeholder="e.g. 5000" type="number" min={1} value={newIngredient.stock} onChange={(e) => setNewIngredient({ ...newIngredient, stock: clampQty(e.target.value) })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Min Stock</Label>
+                  <Input placeholder="e.g. 1000" type="number" min={1} value={newIngredient.minStock} onChange={(e) => setNewIngredient({ ...newIngredient, minStock: clampQty(e.target.value) })} />
+                </div>
+              </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddIngredient(false)}>Cancel</Button>
+              <Button variant="outline" className="flex-1" onClick={closeAllModals}>Cancel</Button>
               <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleAddIngredient}>Save</Button>
             </div>
           </div>
@@ -446,20 +550,66 @@ export default function InventoryPage() {
           <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Add Purchase</h2>
-              <button onClick={() => setShowAddPurchase(false)} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={closeAllModals} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
             <div className="space-y-3">
-              <Input placeholder="Item Name" value={newPurchase.item} onChange={(e) => setNewPurchase({ ...newPurchase, item: e.target.value })} />
-              <Input placeholder="Quantity" type="number" value={newPurchase.qty} onChange={(e) => setNewPurchase({ ...newPurchase, qty: e.target.value })} />
-              <Input placeholder="Unit" value={newPurchase.unit} onChange={(e) => setNewPurchase({ ...newPurchase, unit: e.target.value })} />
-              <Input placeholder="Price per Unit" type="number" value={newPurchase.price} onChange={(e) => setNewPurchase({ ...newPurchase, price: e.target.value })} />
-              <Input placeholder="Supplier" value={newPurchase.supplier} onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })} />
-              <Input placeholder="Date (optional)" value={newPurchase.date} onChange={(e) => setNewPurchase({ ...newPurchase, date: e.target.value })} />
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Item Name</Label>
+                <Input placeholder="e.g. Kopi Arabica" value={newPurchase.item} onChange={(e) => setNewPurchase({ ...newPurchase, item: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Quantity</Label>
+                  <Input placeholder="e.g. 5000" type="number" min={1} value={newPurchase.qty} onChange={(e) => setNewPurchase({ ...newPurchase, qty: clampQty(e.target.value) })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Unit</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={newPurchase.unit}
+                    onChange={(e) => setNewPurchase({ ...newPurchase, unit: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    <option value="gram">gram</option>
+                    <option value="ml">ml</option>
+                    <option value="pcs">pcs</option>
+                    <option value="kg">kg</option>
+                    <option value="liter">liter</option>
+                    <option value="pack">pack</option>
+                    <option value="box">box</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Price per Unit</Label>
+                <Input placeholder="e.g. 50.000" type="text" inputMode="numeric" value={formatPrice(newPurchase.price)} onChange={(e) => setNewPurchase({ ...newPurchase, price: formatPrice(e.target.value) })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Supplier</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={newPurchase.supplier}
+                  onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })}
+                >
+                  <option value="">Select supplier...</option>
+                  {[...new Set(ingredientsData.map(i => i.supplier))].map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                  <option value="Other">Other</option>
+                </select>
+                {newPurchase.supplier === "Other" && (
+                  <Input placeholder="Enter supplier name" className="mt-2" value={newPurchase.supplier === "Other" ? "" : newPurchase.supplier} onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })} />
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Date</Label>
+                <Input type="date" value={newPurchase.date} onChange={(e) => setNewPurchase({ ...newPurchase, date: e.target.value })} />
+              </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddPurchase(false)}>Cancel</Button>
+              <Button variant="outline" className="flex-1" onClick={closeAllModals}>Cancel</Button>
               <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleAddPurchase}>Save</Button>
             </div>
           </div>
@@ -472,34 +622,130 @@ export default function InventoryPage() {
           <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold">Add Stock Movement</h2>
-              <button onClick={() => setShowAddMovement(false)} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={closeAllModals} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
             <div className="space-y-3">
-              <Input placeholder="Item Name" value={newMovement.item} onChange={(e) => setNewMovement({ ...newMovement, item: e.target.value })} />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setNewMovement({ ...newMovement, type: "in" })}
-                  className={cn("flex-1 rounded-lg border py-2 text-sm font-medium", newMovement.type === "in" ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "")}
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Item Name</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={newMovement.item}
+                  onChange={(e) => {
+                    const ing = ingredientsData.find(i => i.name === e.target.value);
+                    setNewMovement({ ...newMovement, item: e.target.value, unit: ing?.unit || newMovement.unit });
+                  }}
                 >
-                  In (Masuk)
-                </button>
-                <button
-                  onClick={() => setNewMovement({ ...newMovement, type: "out" })}
-                  className={cn("flex-1 rounded-lg border py-2 text-sm font-medium", newMovement.type === "out" ? "border-red-200 bg-red-50 text-red-600" : "")}
-                >
-                  Out (Keluar)
-                </button>
+                  <option value="">Select ingredient...</option>
+                  {ingredientsData.map((i) => (
+                    <option key={i.id} value={i.name}>{i.name} ({i.stock} {i.unit})</option>
+                  ))}
+                </select>
               </div>
-              <Input placeholder="Quantity" type="number" value={newMovement.qty} onChange={(e) => setNewMovement({ ...newMovement, qty: e.target.value })} />
-              <Input placeholder="Unit" value={newMovement.unit} onChange={(e) => setNewMovement({ ...newMovement, unit: e.target.value })} />
-              <Input placeholder="Reference" value={newMovement.ref} onChange={(e) => setNewMovement({ ...newMovement, ref: e.target.value })} />
-              <Input placeholder="User" value={newMovement.user} onChange={(e) => setNewMovement({ ...newMovement, user: e.target.value })} />
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Type</Label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setNewMovement({ ...newMovement, type: "in" })}
+                    className={cn("flex-1 rounded-lg border py-2 text-sm font-medium", newMovement.type === "in" ? "border-emerald-200 bg-emerald-50 text-emerald-600" : "")}
+                  >
+                    In (Masuk)
+                  </button>
+                  <button
+                    onClick={() => setNewMovement({ ...newMovement, type: "out" })}
+                    className={cn("flex-1 rounded-lg border py-2 text-sm font-medium", newMovement.type === "out" ? "border-red-200 bg-red-50 text-red-600" : "")}
+                  >
+                    Out (Keluar)
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Quantity</Label>
+                  <Input placeholder="e.g. 500" type="number" min={1} value={newMovement.qty} onChange={(e) => setNewMovement({ ...newMovement, qty: clampQty(e.target.value) })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Unit</Label>
+                  <select
+                    className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                    value={newMovement.unit}
+                    onChange={(e) => setNewMovement({ ...newMovement, unit: e.target.value })}
+                  >
+                    <option value="">Select...</option>
+                    <option value="gram">gram</option>
+                    <option value="ml">ml</option>
+                    <option value="pcs">pcs</option>
+                    <option value="kg">kg</option>
+                    <option value="liter">liter</option>
+                    <option value="pack">pack</option>
+                    <option value="box">box</option>
+                  </select>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Reference</Label>
+                <Input placeholder="e.g. PO-2026-001" value={newMovement.ref} onChange={(e) => setNewMovement({ ...newMovement, ref: e.target.value })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">User</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={newMovement.user}
+                  onChange={(e) => setNewMovement({ ...newMovement, user: e.target.value })}
+                >
+                  <option value="">Select user...</option>
+                  <option value="Admin">Admin</option>
+                  <option value="Budi">Budi</option>
+                  <option value="Rudi">Rudi</option>
+                  <option value="Manager">Manager</option>
+                </select>
+              </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddMovement(false)}>Cancel</Button>
+              <Button variant="outline" className="flex-1" onClick={closeAllModals}>Cancel</Button>
               <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleAddMovement}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Restock Modal */}
+      {showRestock && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">Restock Ingredient</h2>
+              <button onClick={closeAllModals} className="rounded-lg p-1 hover:bg-muted">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Ingredient</Label>
+                <select
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                  value={restock.ingredientId}
+                  onChange={(e) => setRestock({ ...restock, ingredientId: e.target.value })}
+                >
+                  <option value="">Select ingredient...</option>
+                  {ingredientsData.map((i) => (
+                    <option key={i.id} value={i.id}>{i.name} ({i.stock} {i.unit})</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                  <Label className="text-xs font-medium">Quantity</Label>
+                  <Input placeholder="e.g. 1000" type="number" min={1} value={restock.qty} onChange={(e) => setRestock({ ...restock, qty: clampQty(e.target.value) })} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Reference</Label>
+                <Input placeholder="e.g. Restock manual" value={restock.ref} onChange={(e) => setRestock({ ...restock, ref: e.target.value })} />
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={closeAllModals}>Cancel</Button>
+              <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleRestock}>Save</Button>
             </div>
           </div>
         </div>

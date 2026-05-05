@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
@@ -14,6 +15,9 @@ import {
   Calculator,
   TrendingUp,
   X,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -76,7 +80,7 @@ interface Recipe {
   ingredients: RecipeIngredient[];
 }
 
-const recipes: Recipe[] = [
+const initialRecipes: Recipe[] = [
   // Main Dish
   {
     id: 1,
@@ -360,7 +364,7 @@ interface Product {
   price: number;
 }
 
-const products: Product[] = [
+const initialProducts: Product[] = [
   // Main Dish
   { id: 1, name: "Nasi Goreng", category: "Main Dish", hpp: 10500, price: 35000 },
   { id: 4, name: "Ayam Goreng", category: "Main Dish", hpp: 12000, price: 40000 },
@@ -415,22 +419,111 @@ export default function MenuRecipePage() {
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const filteredRecipes = recipes.filter((r) =>
+  const [recipesData, setRecipesData] = useState<Recipe[]>(initialRecipes);
+  const [productsData, setProductsData] = useState<Product[]>(initialProducts);
+
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [pricingPage, setPricingPage] = useState(1);
+  const pricingPerPage = 10;
+  const [newMenu, setNewMenu] = useState({
+    name: "",
+    category: "Main Dish",
+    price: "",
+    ingredients: [{ name: "", qty: "", unit: "" }] as { name: string; qty: string; unit: string }[],
+  });
+
+  const filteredRecipes = recipesData.filter((r) =>
     r.name.toLowerCase().includes(search.toLowerCase()) ||
     r.category.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredProducts = products.filter((p) =>
+  const filteredProducts = productsData.filter((p) =>
     p.name.toLowerCase().includes(search.toLowerCase()) ||
     p.category.toLowerCase().includes(search.toLowerCase())
   );
+
+  const pricingTotalPages = Math.max(1, Math.ceil(filteredProducts.length / pricingPerPage));
+  const paginatedProducts = filteredProducts.slice(
+    (pricingPage - 1) * pricingPerPage,
+    pricingPage * pricingPerPage
+  );
+
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShowAddMenu(false);
+    };
+    window.addEventListener("keydown", handleEsc);
+    return () => window.removeEventListener("keydown", handleEsc);
+  }, []);
+
+  useEffect(() => {
+    setPricingPage(1);
+  }, [search, activeTab]);
+
+  const handleAddMenu = () => {
+    if (!newMenu.name || !newMenu.price) return;
+    const validIngredients = newMenu.ingredients
+      .filter((ing) => ing.name && ing.qty)
+      .map((ing) => ({
+        name: ing.name,
+        qty: Number(ing.qty),
+        unit: ing.unit || ingredientPrices[ing.name]?.unit || "pcs",
+      }));
+    if (validIngredients.length === 0) return;
+
+    const id = Math.max(...recipesData.map((r) => r.id), 0) + 1;
+    const hpp = calcHPP(validIngredients);
+    const price = Number(newMenu.price);
+
+    setRecipesData([
+      ...recipesData,
+      { id, name: newMenu.name, category: newMenu.category, ingredients: validIngredients },
+    ]);
+    setProductsData([
+      ...productsData,
+      { id, name: newMenu.name, category: newMenu.category, hpp, price },
+    ]);
+
+    setNewMenu({
+      name: "",
+      category: "Main Dish",
+      price: "",
+      ingredients: [{ name: "", qty: "", unit: "" }],
+    });
+    setShowAddMenu(false);
+  };
+
+  const updateIngredient = (index: number, field: "name" | "qty" | "unit", value: string) => {
+    const updated = [...newMenu.ingredients];
+    updated[index] = { ...updated[index], [field]: value };
+    if (field === "name" && value) {
+      updated[index].unit = ingredientPrices[value]?.unit || "";
+    }
+    setNewMenu({ ...newMenu, ingredients: updated });
+  };
+
+  const addIngredientRow = () => {
+    setNewMenu({ ...newMenu, ingredients: [...newMenu.ingredients, { name: "", qty: "", unit: "" }] });
+  };
+
+  const removeIngredientRow = (index: number) => {
+    const updated = newMenu.ingredients.filter((_, i) => i !== index);
+    if (updated.length === 0) {
+      setNewMenu({ ...newMenu, ingredients: [{ name: "", qty: "", unit: "" }] });
+    } else {
+      setNewMenu({ ...newMenu, ingredients: updated });
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       {/* Header */}
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Menu & Recipe Management</h1>
-        <Button className="h-8 gap-2 rounded-xl bg-blue-600 px-3 text-xs font-medium hover:bg-blue-700 sm:h-9 sm:px-4 sm:text-sm">
+        <Button
+          className="h-8 gap-2 rounded-xl bg-blue-600 px-3 text-xs font-medium hover:bg-blue-700 sm:h-9 sm:px-4 sm:text-sm"
+          onClick={() => setShowAddMenu(true)}
+        >
           <Plus className="size-3.5 sm:size-4" />
           <span className="hidden sm:inline">Add Menu</span>
           <span className="sm:hidden">Add</span>
@@ -551,7 +644,7 @@ export default function MenuRecipePage() {
                     <div>
                       <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill of Materials</h3>
                       <div className="overflow-x-auto rounded-lg border border-border/60">
-                        <table className="w-full text-left text-xs min-w-[500px]">
+                        <table className="w-full text-left text-xs min-w-125">
                           <thead>
                             <tr className="border-b border-border/60 bg-muted/50 text-muted-foreground">
                               <th className="px-3 py-2.5 font-medium">Bahan</th>
@@ -614,7 +707,7 @@ export default function MenuRecipePage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[500px] text-left text-xs">
+                  <table className="w-full min-w-125 text-left text-xs">
                   <thead>
                     <tr className="border-b text-muted-foreground">
                       <th className="pb-2 font-medium">Menu</th>
@@ -627,7 +720,7 @@ export default function MenuRecipePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {filteredProducts.map((p) => {
+                    {paginatedProducts.map((p) => {
                       const margin = calcMargin(p.hpp, p.price);
                       const profit = p.price - p.hpp;
                       const isHealthy = margin >= 100;
@@ -661,11 +754,130 @@ export default function MenuRecipePage() {
                   </tbody>
                 </table>
                 </div>
+                {/* Pagination */}
+                {filteredProducts.length > pricingPerPage && (
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">
+                      Showing {(pricingPage - 1) * pricingPerPage + 1}–{Math.min(pricingPage * pricingPerPage, filteredProducts.length)} of {filteredProducts.length}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={pricingPage <= 1}
+                        onClick={() => setPricingPage(pricingPage - 1)}
+                      >
+                        <ChevronLeft className="size-3.5" />
+                      </Button>
+                      {Array.from({ length: pricingTotalPages }, (_, i) => i + 1).map((page) => (
+                        <Button
+                          key={page}
+                          variant={pricingPage === page ? "default" : "outline"}
+                          size="sm"
+                          className={cn("h-7 min-w-[28px] px-1.5 text-xs", pricingPage === page ? "bg-blue-600 hover:bg-blue-700" : "")}
+                          onClick={() => setPricingPage(page)}
+                        >
+                          {page}
+                        </Button>
+                      ))}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                        disabled={pricingPage >= pricingTotalPages}
+                        onClick={() => setPricingPage(pricingPage + 1)}
+                      >
+                        <ChevronRight className="size-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </div>
       </Tabs>
+
+      {/* Add Menu Modal */}
+      {showAddMenu && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-background shadow-lg">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Add Menu</h2>
+              <button onClick={() => setShowAddMenu(false)} className="rounded-lg p-1 hover:bg-muted">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Name</Label>
+                  <Input placeholder="e.g. Nasi Goreng" value={newMenu.name} onChange={(e) => setNewMenu({ ...newMenu, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Category</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={newMenu.category}
+                      onChange={(e) => setNewMenu({ ...newMenu, category: e.target.value })}
+                    >
+                      <option value="Main Dish">Main Dish</option>
+                      <option value="Beverage">Beverage</option>
+                      <option value="Appetizer">Appetizer</option>
+                      <option value="Snack">Snack</option>
+                      <option value="Dessert">Dessert</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Selling Price</Label>
+                    <Input placeholder="e.g. 35000" type="number" value={newMenu.price} onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Ingredients</Label>
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={addIngredientRow}>
+                      <Plus className="size-3" /> Add
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {newMenu.ingredients.map((ing, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_80px_80px_32px] gap-2">
+                        <select
+                          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                          value={ing.name}
+                          onChange={(e) => updateIngredient(idx, "name", e.target.value)}
+                        >
+                          <option value="">Select ingredient...</option>
+                          {Object.keys(ingredientPrices).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <Input placeholder="Qty" type="number" value={ing.qty} onChange={(e) => updateIngredient(idx, "qty", e.target.value)} />
+                        <Input placeholder="Unit" value={ing.unit} onChange={(e) => updateIngredient(idx, "unit", e.target.value)} />
+                        <button
+                          type="button"
+                          onClick={() => removeIngredientRow(idx)}
+                          className="flex h-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 border-t px-6 py-4">
+              <Button variant="outline" className="flex-1" onClick={() => setShowAddMenu(false)}>Cancel</Button>
+              <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleAddMenu}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

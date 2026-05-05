@@ -18,6 +18,7 @@ import {
   BookOpen,
   X,
   Menu,
+  Receipt,
 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
@@ -25,6 +26,7 @@ const navItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
   { icon: UtensilsCrossed, label: "Menu Order", href: "/pos" },
   { icon: Package, label: "Inventory", href: "/inventory" },
+  { icon: Receipt, label: "Transactions", href: "/transactions" },
   { icon: Users, label: "Member", href: "/member" },
   { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
   { icon: Table, label: "Manage Table", href: "#", hasSubmenu: true },
