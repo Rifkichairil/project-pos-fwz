@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Plus,
   Search,
@@ -209,34 +208,53 @@ export default function InventoryPage() {
       </header>
 
       {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-1 flex-col overflow-hidden">
-        <div className="border-b px-4 pt-2 sm:px-6">
-          <TabsList className="h-9 rounded-none bg-transparent p-0 flex-wrap">
-            <TabsTrigger
-              value="ingredients"
-              className="rounded-none border-b-2 border-transparent px-3 pb-2 pt-1 text-xs font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:text-sm"
-            >
-              <Boxes className="mr-1.5 size-3.5" /> Master Bahan
-            </TabsTrigger>
-            <TabsTrigger
-              value="stock"
-              className="rounded-none border-b-2 border-transparent px-3 pb-2 pt-1 text-xs font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:text-sm"
-            >
-              <Package className="mr-1.5 size-3.5" /> Stock Management
-            </TabsTrigger>
-            <TabsTrigger
-              value="purchase"
-              className="rounded-none border-b-2 border-transparent px-3 pb-2 pt-1 text-xs font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:text-sm"
-            >
-              <Receipt className="mr-1.5 size-3.5" /> Purchase
-            </TabsTrigger>
-            <TabsTrigger
-              value="movement"
-              className="rounded-none border-b-2 border-transparent px-3 pb-2 pt-1 text-xs font-medium data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none sm:text-sm"
-            >
-              <ArrowLeftRight className="mr-1.5 size-3.5" /> Stock Movement
-            </TabsTrigger>
-          </TabsList>
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Tab Navigation */}
+        <div className="flex gap-1 border-b px-4 pt-4 sm:px-6">
+          <button
+            onClick={() => setActiveTab("ingredients")}
+            className={cn(
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
+              activeTab === "ingredients"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Boxes className="mr-1.5 inline size-3.5" /> Master Bahan
+          </button>
+          <button
+            onClick={() => setActiveTab("stock")}
+            className={cn(
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
+              activeTab === "stock"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Package className="mr-1.5 inline size-3.5" /> Stock Management
+          </button>
+          <button
+            onClick={() => setActiveTab("purchase")}
+            className={cn(
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
+              activeTab === "purchase"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <Receipt className="mr-1.5 inline size-3.5" /> Purchase
+          </button>
+          <button
+            onClick={() => setActiveTab("movement")}
+            className={cn(
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
+              activeTab === "movement"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            <ArrowLeftRight className="mr-1.5 inline size-3.5" /> Stock Movement
+          </button>
         </div>
 
         {/* Search bar */}
@@ -254,7 +272,7 @@ export default function InventoryPage() {
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {/* ─── Master Bahan ─── */}
-          <TabsContent value="ingredients" className="m-0">
+          {activeTab === "ingredients" && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">Master Bahan</CardTitle>
@@ -301,10 +319,11 @@ export default function InventoryPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
           {/* ─── Stock Management ─── */}
-          <TabsContent value="stock" className="m-0 space-y-4">
+          {activeTab === "stock" && (
+            <>
             {/* Alert Cards */}
             {lowStock.length > 0 && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -369,10 +388,11 @@ export default function InventoryPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+            </>
+          )}
 
           {/* ─── Purchase ─── */}
-          <TabsContent value="purchase" className="m-0">
+          {activeTab === "purchase" && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">Purchase History</CardTitle>
@@ -408,10 +428,10 @@ export default function InventoryPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
 
           {/* ─── Stock Movement ─── */}
-          <TabsContent value="movement" className="m-0">
+          {activeTab === "movement" && (
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-semibold">Stock Movement History</CardTitle>
@@ -466,9 +486,9 @@ export default function InventoryPage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
+          )}
         </div>
-      </Tabs>
+      </div>
 
       {/* Add Ingredient Modal */}
       {showAddIngredient && (

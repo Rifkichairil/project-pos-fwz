@@ -28,6 +28,7 @@ import {
   ArrowUpDown,
   Users,
   User,
+  Plus as AddIcon,
 } from "lucide-react";
 
 interface CartItem {
@@ -262,9 +263,13 @@ export default function PosPage() {
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [cashAmount, setCashAmount] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showMidtransQRModal, setShowMidtransQRModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptOrderId, setReceiptOrderId] = useState("");
-  const [activeTab, setActiveTab] = useState<"new" | "list">("new");
+  const [midtransRedirectUrl, setMidtransRedirectUrl] = useState("");
+  const [midtransLoading, setMidtransLoading] = useState(false);
+  const [midtransError, setMidtransError] = useState("");
+  const [activeTab, setActiveTab] = useState<"new" | "list" | "table">("new");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([
@@ -292,6 +297,20 @@ export default function PosPage() {
       { name: "Es Jeruk", qty: 1, price: 17000 },
     ]},
   ]);
+
+  const [tables, setTables] = useState([
+    { id: 1, name: "Table 1A", capacity: 4, status: "Available" },
+    { id: 2, name: "Table 1B", capacity: 4, status: "Occupied" },
+    { id: 3, name: "Table 2A", capacity: 6, status: "Available" },
+    { id: 4, name: "Table 2B", capacity: 6, status: "Reserved" },
+    { id: 5, name: "Table 3A", capacity: 2, status: "Available" },
+    { id: 6, name: "Table 3B", capacity: 2, status: "Occupied" },
+    { id: 7, name: "Table 4A", capacity: 8, status: "Available" },
+    { id: 8, name: "Table 4B", capacity: 8, status: "Cleaning" },
+  ]);
+  const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [newTableCapacity, setNewTableCapacity] = useState("");
 
   const promoMap: Record<string, { label: string; calc: (sub: number) => number }> = {
     WELCOME10: { label: "WELCOME10", calc: (sub) => Math.round(sub * 0.1) },
@@ -402,6 +421,51 @@ export default function PosPage() {
     });
   };
 
+  const buildOrderId = () => `TRX-${Date.now()}`;
+
+  const handleMidtransPayNow = async () => {
+    const orderId = buildOrderId();
+    setMidtransLoading(true);
+    setMidtransError("");
+
+    try {
+      const response = await fetch("/api/midtrans/transaction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId,
+          total,
+          customerName,
+          items: cart.map((item) => ({
+            id: String(item.id),
+            price: item.price,
+            quantity: item.qty,
+            name: item.name,
+          })),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || "Failed to create Midtrans transaction");
+      }
+
+      setReceiptOrderId(`#${orderId.slice(-4)}`);
+      setMidtransRedirectUrl(data.redirect_url || "");
+      setShowConfirmModal(false);
+      setShowMidtransQRModal(true);
+    } catch (error) {
+      setMidtransError(error instanceof Error ? error.message : "Midtrans payment failed");
+      setShowConfirmModal(false);
+      setShowMidtransQRModal(true);
+    } finally {
+      setMidtransLoading(false);
+    }
+  };
+
   return (
     <>
       <div className="flex h-full">
@@ -450,6 +514,17 @@ export default function PosPage() {
             )}
           >
             Order List
+          </button>
+          <button
+            onClick={() => setActiveTab("table")}
+            className={cn(
+              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
+              activeTab === "table"
+                ? "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            Table
           </button>
         </div>
 
@@ -664,7 +739,7 @@ export default function PosPage() {
             ))}
           </div>
             </>
-          ) : (
+          ) : activeTab === "list" ? (
             <div className="flex h-full flex-col gap-4">
               <h2 className="text-base font-semibold">Order Board</h2>
               <div className="flex gap-4 overflow-x-auto pb-2">
@@ -753,6 +828,90 @@ export default function PosPage() {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-semibold">Table Management</h2>
+                <Button
+                  onClick={() => setShowAddTableModal(true)}
+                  className="h-8 gap-1.5 px-3 text-xs"
+                >
+                  <AddIcon className="size-3.5" />
+                  Add Table
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                {tables.map((table) => (
+                  <Card key={table.id} className="border-border/60">
+                    <CardContent className="p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <span className="text-sm font-semibold">{table.name}</span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "rounded-md text-xs",
+                            table.status === "Available" && "border-emerald-200 bg-emerald-50 text-emerald-600",
+                            table.status === "Occupied" && "border-red-200 bg-red-50 text-red-600",
+                            table.status === "Reserved" && "border-amber-200 bg-amber-50 text-amber-600",
+                            table.status === "Cleaning" && "border-blue-200 bg-blue-50 text-blue-600"
+                          )}
+                        >
+                          {table.status}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Capacity: {table.capacity} persons</p>
+                      {table.status === "Available" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-7 w-full text-xs"
+                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Reserved" } : t))}
+                        >
+                          Reserved
+                        </Button>
+                      ) : table.status === "Occupied" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-7 w-full text-xs"
+                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Cleaning" } : t))}
+                        >
+                          Cleaning
+                        </Button>
+                      ) : table.status === "Reserved" ? (
+                        <div className="mt-3 flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 h-7 text-xs"
+                            onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Occupied" } : t))}
+                          >
+                            Occupied
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 h-7 text-xs"
+                            onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Available" } : t))}
+                          >
+                            Available
+                          </Button>
+                        </div>
+                      ) : table.status === "Cleaning" ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-3 h-7 w-full text-xs"
+                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Available" } : t))}
+                        >
+                          Available
+                        </Button>
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
             </div>
           )}
@@ -854,9 +1013,9 @@ export default function PosPage() {
                       <SelectValue placeholder="Select table" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="1">Table 1</SelectItem>
-                      <SelectItem value="2">Table 2</SelectItem>
-                      <SelectItem value="3A">Table 3A</SelectItem>
+                      {tables.filter((t) => t.status === "Available").map((table) => (
+                        <SelectItem key={table.id} value={table.name}>{table.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -1037,6 +1196,7 @@ export default function PosPage() {
                 <SelectItem value="cash">Cash</SelectItem>
                 <SelectItem value="card">Card</SelectItem>
                 <SelectItem value="qris">QRIS</SelectItem>
+                <SelectItem value="midtrans">Payment Gateway Midtrans</SelectItem>
               </SelectContent>
             </Select>
 
@@ -1101,7 +1261,11 @@ export default function PosPage() {
           <Button
             className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
             disabled={!customerName.trim() || !orderType || !tableNumber || cart.length === 0}
-            onClick={() => setShowConfirmModal(true)}
+            onClick={() => {
+              setMidtransError("");
+              setMidtransRedirectUrl("");
+              setShowConfirmModal(true);
+            }}
           >
             Confirm Payment
           </Button>
@@ -1121,6 +1285,12 @@ export default function PosPage() {
                 <span className="text-muted-foreground">Payment</span>
                 <span className="capitalize">{paymentMethod}</span>
               </div>
+              {(paymentMethod === "card" || paymentMethod === "qris" || paymentMethod === "midtrans") && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Payment Gateway</span>
+                  <span>Midtrans</span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Items</span>
                 <span>{cart.reduce((sum, i) => sum + i.qty, 0)} items</span>
@@ -1156,13 +1326,160 @@ export default function PosPage() {
               </Button>
               <Button
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
-                onClick={() => {
+                disabled={midtransLoading}
+                onClick={async () => {
+                  if (paymentMethod === "cash") {
+                    setShowConfirmModal(false);
+                    setReceiptOrderId(`#${Date.now().toString().slice(-4)}`);
+                    setShowReceiptModal(true);
+                    return;
+                  }
+
+                  if (paymentMethod === "midtrans") {
+                    await handleMidtransPayNow();
+                    return;
+                  }
+
                   setShowConfirmModal(false);
-                  setReceiptOrderId(`#${Date.now().toString().slice(-4)}`);
+                  setShowMidtransQRModal(true);
+                }}
+              >
+                {midtransLoading ? "Processing..." : "Pay Now"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Midtrans QR Modal */}
+      {showMidtransQRModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">Midtrans QR Payment</h3>
+            <div className="mb-4 flex flex-col items-center gap-3">
+              {midtransLoading ? (
+                <p className="text-sm text-muted-foreground">Generating Midtrans QR...</p>
+              ) : midtransError ? (
+                <div className="w-full rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {midtransError}
+                </div>
+              ) : midtransRedirectUrl ? (
+                <>
+                  <div className="w-full overflow-hidden rounded-lg border">
+                    <iframe
+                      src={midtransRedirectUrl}
+                      title="Midtrans Payment"
+                      className="h-96 w-full"
+                    />
+                  </div>
+                  <a
+                    href={midtransRedirectUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-600 underline"
+                  >
+                    Open Midtrans in new tab
+                  </a>
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">No QR session found.</p>
+              )}
+              <p className="text-center text-sm text-muted-foreground">
+                Scan QR dari halaman Midtrans lalu lanjutkan setelah pembayaran sukses.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowMidtransQRModal(false);
+                  setMidtransRedirectUrl("");
+                  setMidtransError("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  setShowMidtransQRModal(false);
+                  if (!receiptOrderId) {
+                    setReceiptOrderId(`#${Date.now().toString().slice(-4)}`);
+                  }
                   setShowReceiptModal(true);
                 }}
               >
-                Pay Now
+                Payment Complete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Table Modal */}
+      {showAddTableModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+            <h3 className="mb-4 text-lg font-semibold">Add New Table</h3>
+            <div className="mb-4 space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Table Name
+                </label>
+                <Input
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  placeholder="e.g., Table 5A"
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-muted-foreground">
+                  Capacity (persons)
+                </label>
+                <Input
+                  type="number"
+                  value={newTableCapacity}
+                  onChange={(e) => setNewTableCapacity(e.target.value)}
+                  placeholder="e.g., 4"
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowAddTableModal(false);
+                  setNewTableName("");
+                  setNewTableCapacity("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                onClick={() => {
+                  if (newTableName.trim() && newTableCapacity) {
+                    setTables((prev) => [
+                      ...prev,
+                      {
+                        id: Date.now(),
+                        name: newTableName,
+                        capacity: Number(newTableCapacity),
+                        status: "Available",
+                      },
+                    ]);
+                    setShowAddTableModal(false);
+                    setNewTableName("");
+                    setNewTableCapacity("");
+                  }
+                }}
+                disabled={!newTableName.trim() || !newTableCapacity}
+              >
+                Add Table
               </Button>
             </div>
           </div>
@@ -1205,6 +1522,16 @@ export default function PosPage() {
                 <span>Table</span>
                 <span>{tableNumber}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Payment</span>
+                <span className="capitalize">{paymentMethod}</span>
+              </div>
+              {(paymentMethod === "card" || paymentMethod === "qris" || paymentMethod === "midtrans") && (
+                <div className="flex justify-between">
+                  <span>PG</span>
+                  <span>Midtrans</span>
+                </div>
+              )}
               <p>--------------------------</p>
               {cart.map((item, i) => (
                 <div key={i}>

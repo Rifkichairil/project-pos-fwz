@@ -263,15 +263,15 @@ export default function TransactionsPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-175 text-left text-xs">
+              <table className="w-full min-w-175 text-center text-xs">
                 <thead>
                   <tr className="border-b text-muted-foreground">
-                    <th className="pb-2 font-medium">Transaction ID</th>
-                    <th className="pb-2 font-medium">Date & Time</th>
-                    <th className="pb-2 font-medium">Customer</th>
-                    <th className="pb-2 font-medium">Type</th>
-                    <th className="pb-2 font-medium text-right">Total</th>
-                    <th className="pb-2 font-medium">Method</th>
+                    <th className="pb-2 font-medium text-left">Transaction ID</th>
+                    <th className="pb-2 font-medium text-left">Date & Time</th>
+                    <th className="pb-2 font-medium text-left">Customer</th>
+                    <th className="pb-2 font-medium text-left">Type</th>
+                    <th className="pb-2 font-medium border-r text-left">Total</th>
+                    <th className="pb-2 font-medium text-center">Method</th>
                     <th className="pb-2 font-medium">Payment Status</th>
                     <th className="pb-2 font-medium">Order Status</th>
                   </tr>
@@ -279,13 +279,13 @@ export default function TransactionsPage() {
                 <tbody className="divide-y">
                   {paginated.map((t) => (
                     <tr key={t.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="py-2.5 font-medium">{t.id}</td>
-                      <td className="py-2.5 text-muted-foreground">{t.date}, {t.time}</td>
-                      <td className="py-2.5">{t.customer}</td>
-                      <td className="py-2.5 text-muted-foreground">{t.type}</td>
-                      <td className="py-2.5 text-right font-semibold">Rp {t.total.toLocaleString("id-ID")}</td>
+                      <td className="py-2.5 text-left font-medium">{t.id}</td>
+                      <td className="py-2.5 text-left text-muted-foreground">{t.date}, {t.time}</td>
+                      <td className="py-2.5 text-left">{t.customer}</td>
+                      <td className="py-2.5 text-left text-muted-foreground">{t.type}</td>
+                      <td className="py-2.5 text-left font-semibold">Rp {t.total.toLocaleString("id-ID")}</td>
                       <td className="py-2.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center justify-center gap-1.5">
                           {methodIcon(t.method)}
                           <span className="text-muted-foreground">{t.method}</span>
                         </div>

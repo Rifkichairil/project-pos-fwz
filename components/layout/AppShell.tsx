@@ -10,7 +10,6 @@ import {
   UtensilsCrossed,
   Package,
   Clock,
-  Table,
   Users,
   Settings,
   HelpCircle,
@@ -29,7 +28,6 @@ const navItems = [
   { icon: Receipt, label: "Transactions", href: "/transactions" },
   { icon: Users, label: "Member", href: "/member" },
   { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
-  { icon: Table, label: "Manage Table", href: "#", hasSubmenu: true },
   { icon: Clock, label: "History", href: "#" },
 ];
 
