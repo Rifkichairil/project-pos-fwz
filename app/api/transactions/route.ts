@@ -38,7 +38,9 @@ function mapMethod(method: TransactionRow["payment_method"]): PaymentMethodUi {
   return "Cash";
 }
 
-function mapPaymentStatus(): PaymentStatusUi {
+function mapPaymentStatus(status: TransactionRow["payment_status"]): PaymentStatusUi {
+  if (status === "pending") return "Pending";
+  if (status === "failed" || status === "voided") return "Failed";
   return "Success";
 }
 
@@ -123,7 +125,7 @@ export async function GET(request: Request) {
         items: Number(row.items_count),
         total: Number(row.total_amount),
         method: mapMethod(row.payment_method),
-        paymentStatus: mapPaymentStatus(),
+        paymentStatus: mapPaymentStatus(row.payment_status),
         orderStatus: mapOrderStatus(row.order_status, row.kanban_note),
       };
     });

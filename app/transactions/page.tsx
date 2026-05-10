@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Search,
   ChevronLeft,
@@ -15,6 +19,7 @@ import {
   Smartphone,
   CreditCard,
   Banknote,
+  CalendarIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +41,50 @@ type TransactionsApiResponse = {
 };
 
 const perPage = 10;
+type DateFilter = "All" | "Today" | "Weekly" | "Monthly";
+
+const parseTransactionDate = (date: string) => {
+  const [day, month, year] = date.split("-").map(Number);
+  const parsedDate = new Date(year, month - 1, day);
+  parsedDate.setHours(0, 0, 0, 0);
+  return parsedDate;
+};
+
+const isWithinDateFilter = (date: string, dateFilter: DateFilter, customRange: DateRange | undefined) => {
+  const transactionDate = parseTransactionDate(date);
+
+  if (customRange?.from || customRange?.to) {
+    const fromDate = customRange.from ? new Date(customRange.from) : null;
+    const toDate = customRange.to ? new Date(customRange.to) : null;
+
+    if (fromDate) fromDate.setHours(0, 0, 0, 0);
+    if (toDate) toDate.setHours(0, 0, 0, 0);
+
+    if (fromDate && transactionDate < fromDate) return false;
+    if (toDate && transactionDate > toDate) return false;
+
+    return true;
+  }
+
+  if (dateFilter === "All") return true;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (dateFilter === "Today") {
+    return transactionDate.getTime() === today.getTime();
+  }
+
+  if (dateFilter === "Weekly") {
+    const oneWeekAgo = new Date(today);
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    return transactionDate >= oneWeekAgo && transactionDate <= today;
+  }
+
+  const oneMonthAgo = new Date(today);
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  return transactionDate >= oneMonthAgo && transactionDate <= today;
+};
 
 const methodIcon = (method: string) => {
   switch (method) {
@@ -104,7 +153,8 @@ const orderStatusBadge = (status: string) => {
 export default function TransactionsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | "Success" | "Pending" | "Failed">("All");
-  const [dateFilter, setDateFilter] = useState<"All" | "Today" | "Weekly" | "Monthly">("All");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("Today");
+  const [customRange, setCustomRange] = useState<DateRange | undefined>();
   const [page, setPage] = useState(1);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,54 +195,35 @@ export default function TransactionsPage() {
     return () => clearInterval(timer);
   }, [loadTransactions]);
 
-  const filtered = transactions.filter((t) => {
+  const dateFilteredTransactions = transactions.filter((t) =>
+    isWithinDateFilter(t.date, dateFilter, customRange)
+  );
+
+  const filtered = dateFilteredTransactions.filter((t) => {
     const matchesSearch =
       t.id.toLowerCase().includes(search.toLowerCase()) ||
       t.customer.toLowerCase().includes(search.toLowerCase()) ||
       t.method.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "All" || t.paymentStatus === statusFilter;
-    
-    // Date filtering logic
-    let matchesDate = true;
-    if (dateFilter !== "All") {
-      const [day, month, year] = t.date.split("-").map(Number);
-      const transactionDate = new Date(year, month - 1, day);
-      const today = new Date();
-      
-      if (dateFilter === "Today") {
-        matchesDate = 
-          transactionDate.getDate() === today.getDate() &&
-          transactionDate.getMonth() === today.getMonth() &&
-          transactionDate.getFullYear() === today.getFullYear();
-      } else if (dateFilter === "Weekly") {
-        const oneWeekAgo = new Date(today);
-        oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-        matchesDate = transactionDate >= oneWeekAgo && transactionDate <= today;
-      } else if (dateFilter === "Monthly") {
-        const oneMonthAgo = new Date(today);
-        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-        matchesDate = transactionDate >= oneMonthAgo && transactionDate <= today;
-      }
-    }
-    
-    return matchesSearch && matchesStatus && matchesDate;
+
+    return matchesSearch && matchesStatus;
   });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
-  const totalNominal = transactions.reduce((sum, t) => sum + t.total, 0);
-  const successCount = transactions.filter((t) => t.paymentStatus === "Success").length;
-  const pendingCount = transactions.filter((t) => t.paymentStatus === "Pending").length;
-  const failedCount = transactions.filter((t) => t.paymentStatus === "Failed").length;
-  const successNominal = transactions
+  const totalNominal = dateFilteredTransactions.reduce((sum, t) => sum + t.total, 0);
+  const successCount = dateFilteredTransactions.filter((t) => t.paymentStatus === "Success").length;
+  const pendingCount = dateFilteredTransactions.filter((t) => t.paymentStatus === "Pending").length;
+  const failedCount = dateFilteredTransactions.filter((t) => t.paymentStatus === "Failed").length;
+  const successNominal = dateFilteredTransactions
     .filter((t) => t.paymentStatus === "Success")
     .reduce((sum, t) => sum + t.total, 0);
-  const pendingNominal = transactions
+  const pendingNominal = dateFilteredTransactions
     .filter((t) => t.paymentStatus === "Pending")
     .reduce((sum, t) => sum + t.total, 0);
-  const failedNominal = transactions
+  const failedNominal = dateFilteredTransactions
     .filter((t) => t.paymentStatus === "Failed")
     .reduce((sum, t) => sum + t.total, 0);
 
@@ -210,7 +241,7 @@ export default function TransactionsPage() {
             <CardContent className="flex flex-col gap-1 p-4">
               <span className="text-xs text-muted-foreground">Total</span>
               <span className="text-lg font-bold">Rp. {totalNominal.toLocaleString("id-ID")}</span>
-              <span className="text-[11px] text-muted-foreground">{transactions.length} transaksi</span>
+              <span className="text-[11px] text-muted-foreground">{dateFilteredTransactions.length} transaksi</span>
             </CardContent>
           </Card>
           <Card className="animate-slide-up" style={{ animationDelay: '50ms' }}>
@@ -249,7 +280,7 @@ export default function TransactionsPage() {
                 className="h-9 w-full rounded-lg border-border bg-muted/50 pl-8 text-xs transition-all duration-200 focus:scale-105"
               />
             </div>
-            <Button variant="outline" size="sm" className="h-9 gap-1.5 px-3 text-xs" onClick={() => { setSearch(""); setStatusFilter("All"); setDateFilter("All"); setPage(1); }}>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 px-3 text-xs" onClick={() => { setSearch(""); setStatusFilter("All"); setDateFilter("Today"); setCustomRange(undefined); setPage(1); }}>
               <RotateCcw className="size-3.5" />
               <span className="hidden sm:inline">Reset</span>
             </Button>
@@ -257,14 +288,14 @@ export default function TransactionsPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium text-muted-foreground">Date</span>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {(["All", "Today", "Weekly", "Monthly"] as const).map((d) => (
                   <button
                     key={d}
-                    onClick={() => setDateFilter(d)}
+                    onClick={() => { setDateFilter(d); setCustomRange(undefined); setPage(1); }}
                     className={cn(
                       "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95",
-                      dateFilter === d
+                      dateFilter === d && !customRange?.from && !customRange?.to
                         ? "border-blue-500 bg-blue-500/10 text-blue-600 shadow-sm"
                         : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
                     )}
@@ -272,6 +303,39 @@ export default function TransactionsPage() {
                     {d}
                   </button>
                 ))}
+                <Popover>
+                  <PopoverTrigger
+                    render={
+                      <Button
+                        variant="outline"
+                        className="h-8 min-w-[220px] justify-start px-2 text-xs font-normal"
+                      />
+                    }
+                  >
+                    <CalendarIcon className="size-3.5" />
+                    {customRange?.from ? (
+                      customRange.to ? (
+                        <>
+                          {format(customRange.from, "dd MMM yyyy")} - {format(customRange.to, "dd MMM yyyy")}
+                        </>
+                      ) : (
+                        format(customRange.from, "dd MMM yyyy")
+                      )
+                    ) : (
+                      <span className="text-muted-foreground">Pick a date range</span>
+                    )}
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      defaultMonth={customRange?.from}
+                      selected={customRange}
+                      onSelect={(range) => { setCustomRange(range); setPage(1); }}
+                      numberOfMonths={2}
+                      disabled={(date) => date > new Date()}
+                    />
+                  </PopoverContent>
+                </Popover>
               </div>
             </div>
             <div className="flex flex-col gap-2">
