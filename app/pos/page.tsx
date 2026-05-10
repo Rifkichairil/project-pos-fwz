@@ -43,16 +43,41 @@ interface CartItem {
   image: string;
 }
 
+type KanbanStatus = "Waiting" | "Ready" | "Done" | "Cancel";
+
 interface BoardOrder {
   id: string;
+  orderCode: string;
   name: string;
   type: string;
-  status: string;
+  status: KanbanStatus;
   time: string;
   items: number;
   total: number;
   menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }[];
 }
+
+type PosOrdersApiResponse = {
+  orders: BoardOrder[];
+};
+
+type TableStatus = "Available" | "Occupied" | "Reserved" | "Cleaning";
+
+type PosTable = {
+  id: number;
+  name: string;
+  capacity: number;
+  status: TableStatus;
+};
+
+type PosTablesApiResponse = {
+  tables: Array<{
+    id: number;
+    name: string;
+    capacity: number;
+    status: "available" | "occupied" | "reserved" | "cleaning";
+  }>;
+};
 
 type PaymentMethod = "cash" | "qris" | "card" | "midtrans" | "e_wallet" | "transfer";
 
@@ -84,6 +109,20 @@ function getMenuInitials(name: string) {
   if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
 
   return `${words[0][0]}${words[1][0]}`.toUpperCase();
+}
+
+function normalizeTableStatus(status: "available" | "occupied" | "reserved" | "cleaning"): TableStatus {
+  if (status === "occupied") return "Occupied";
+  if (status === "reserved") return "Reserved";
+  if (status === "cleaning") return "Cleaning";
+  return "Available";
+}
+
+function serializeTableStatus(status: TableStatus): "available" | "occupied" | "reserved" | "cleaning" {
+  if (status === "Occupied") return "occupied";
+  if (status === "Reserved") return "reserved";
+  if (status === "Cleaning") return "cleaning";
+  return "available";
 }
 
 const fallbackMenuImage = "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400&q=80";
@@ -129,42 +168,16 @@ export default function PosPage() {
   const [activeTab, setActiveTab] = useState<"new" | "list" | "table">("new");
   const [expandedOrder, setExpandedOrder] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
-  const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([
-    { id: "#4480", name: "Juna Wok", type: "Takeaway", status: "Waiting", time: "07-05-2025, 03:18 pm", items: 3, total: 75000, menuItems: [
-      { name: "Es Buah", qty: 1, price: 26000, variant: "Regular", sugar: "Normal Sugar", note: "Tidak pakai es batu, ganti jelly cincau dan tambahkan topping kelapa muda sebanyak-banyaknya" },
-      { name: "Nasi Goreng", qty: 2, price: 32000, variant: "Regular" },
-    ]},
-    { id: "#4481", name: "Jung Kit", type: "Delivery", status: "Ready", time: "07-05-2025, 03:18 pm", items: 2, total: 52000, menuItems: [
-      { name: "Sate Ayam", qty: 2, price: 26000 },
-    ]},
-    { id: "#4482", name: "John Pantau", type: "Dine in", status: "Cancel", time: "07-05-2025, 02:18 pm", items: 5, total: 128000, menuItems: [
-      { name: "Rendang", qty: 1, price: 45000, variant: "Large" },
-      { name: "Teh Tarik", qty: 2, price: 15000, sugar: "Less Sugar" },
-      { name: "Kerupuk", qty: 2, price: 5000 },
-    ]},
-    { id: "#4483", name: "Jane Doe", type: "Takeaway", status: "Ready", time: "07-05-2025, 01:45 pm", items: 1, total: 26000, menuItems: [
-      { name: "Es Buah", qty: 1, price: 26000, variant: "Regular", sugar: "Normal Sugar" },
-    ]},
-    { id: "#4484", name: "Bob Smith", type: "Dine in", status: "Waiting", time: "07-05-2025, 12:30 pm", items: 4, total: 96000, menuItems: [
-      { name: "Nasi Goreng", qty: 2, price: 32000, variant: "Large" },
-      { name: "Es Teh", qty: 2, price: 16000, sugar: "Less Sugar" },
-    ]},
-    { id: "#4485", name: "Alice Chan", type: "Takeaway", status: "Done", time: "07-05-2025, 11:15 am", items: 2, total: 45000, menuItems: [
-      { name: "Mie Goreng", qty: 1, price: 28000 },
-      { name: "Es Jeruk", qty: 1, price: 17000 },
-    ]},
-  ]);
+  const [boardOrders, setBoardOrders] = useState<BoardOrder[]>([]);
+  const [boardLoading, setBoardLoading] = useState(true);
+  const [boardError, setBoardError] = useState("");
+  const [boardStatusSaving, setBoardStatusSaving] = useState<string | null>(null);
 
-  const [tables, setTables] = useState([
-    { id: 1, name: "Table 1A", capacity: 4, status: "Available" },
-    { id: 2, name: "Table 1B", capacity: 4, status: "Occupied" },
-    { id: 3, name: "Table 2A", capacity: 6, status: "Available" },
-    { id: 4, name: "Table 2B", capacity: 6, status: "Reserved" },
-    { id: 5, name: "Table 3A", capacity: 2, status: "Available" },
-    { id: 6, name: "Table 3B", capacity: 2, status: "Occupied" },
-    { id: 7, name: "Table 4A", capacity: 8, status: "Available" },
-    { id: 8, name: "Table 4B", capacity: 8, status: "Cleaning" },
-  ]);
+  const [tables, setTables] = useState<PosTable[]>([]);
+  const [tablesLoading, setTablesLoading] = useState(true);
+  const [tablesError, setTablesError] = useState("");
+  const [tableStatusSavingId, setTableStatusSavingId] = useState<number | null>(null);
+  const [tableCreateSaving, setTableCreateSaving] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableCapacity, setNewTableCapacity] = useState("");
@@ -200,11 +213,186 @@ export default function PosPage() {
     }
   }, []);
 
+  const loadBoardOrders = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setBoardLoading(true);
+    }
+    try {
+      const response = await fetch("/api/pos?limit=30", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load order board");
+      }
+
+      const data = (await response.json()) as PosOrdersApiResponse;
+      setBoardOrders(data.orders || []);
+      setBoardError("");
+    } catch {
+      setBoardError("Failed to load order board");
+    } finally {
+      setBoardLoading(false);
+    }
+  }, []);
+
+  const updateBoardOrderStatus = useCallback(async (orderId: string, nextStatus: KanbanStatus) => {
+    const current = boardOrders.find((order) => order.id === orderId);
+    if (!current || current.status === nextStatus) {
+      return;
+    }
+
+    setBoardStatusSaving(orderId);
+    setBoardOrders((prev) =>
+      prev.map((order) => (order.id === orderId ? { ...order, status: nextStatus } : order))
+    );
+
+    try {
+      const response = await fetch("/api/pos", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderCode: current.orderCode,
+          status: nextStatus,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update order status");
+      }
+    } catch {
+      setBoardOrders((prev) =>
+        prev.map((order) => (order.id === orderId ? { ...order, status: current.status } : order))
+      );
+    } finally {
+      setBoardStatusSaving(null);
+    }
+  }, [boardOrders]);
+
+  const loadTables = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setTablesLoading(true);
+    }
+
+    try {
+      const response = await fetch("/api/tables", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load tables");
+      }
+
+      const data = (await response.json()) as PosTablesApiResponse;
+      const mapped = (data.tables || []).map((table) => ({
+        id: table.id,
+        name: table.name,
+        capacity: table.capacity,
+        status: normalizeTableStatus(table.status),
+      }));
+
+      setTables(mapped);
+      setTablesError("");
+    } catch {
+      setTablesError("Failed to load tables");
+    } finally {
+      setTablesLoading(false);
+    }
+  }, []);
+
+  const updateTableStatus = useCallback(async (tableId: number, status: TableStatus) => {
+    const current = tables.find((table) => table.id === tableId);
+    if (!current || current.status === status) {
+      return;
+    }
+
+    setTableStatusSavingId(tableId);
+    setTables((prev) => prev.map((table) => (table.id === tableId ? { ...table, status } : table)));
+
+    try {
+      const response = await fetch(`/api/tables/${tableId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ status: serializeTableStatus(status) }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to update table status");
+      }
+
+      setTablesError("");
+    } catch {
+      setTables((prev) => prev.map((table) => (table.id === tableId ? { ...table, status: current.status } : table)));
+      setTablesError("Failed to update table status");
+    } finally {
+      setTableStatusSavingId(null);
+    }
+  }, [tables]);
+
+  const createTable = useCallback(async () => {
+    const name = newTableName.trim();
+    const capacity = Number(newTableCapacity);
+
+    if (!name || !Number.isFinite(capacity) || capacity <= 0) {
+      setTablesError("Table name and capacity are required");
+      return;
+    }
+
+    setTableCreateSaving(true);
+
+    try {
+      const response = await fetch("/api/tables", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          capacity: Math.trunc(capacity),
+          status: "available",
+        }),
+      });
+
+      const data = (await response.json()) as { error?: string; table?: { id: number; name: string; capacity: number; status: "available" | "occupied" | "reserved" | "cleaning" } };
+
+      if (!response.ok || !data.table) {
+        throw new Error(data.error || "Failed to create table");
+      }
+
+      setTables((prev) => [
+        {
+          id: data.table!.id,
+          name: data.table!.name,
+          capacity: data.table!.capacity,
+          status: normalizeTableStatus(data.table!.status),
+        },
+        ...prev,
+      ]);
+      setTablesError("");
+      setShowAddTableModal(false);
+      setNewTableName("");
+      setNewTableCapacity("");
+    } catch (error) {
+      setTablesError(error instanceof Error ? error.message : "Failed to create table");
+    } finally {
+      setTableCreateSaving(false);
+    }
+  }, [newTableCapacity, newTableName]);
+
   useEffect(() => {
     queueMicrotask(() => {
       void loadMenuList();
+      void loadBoardOrders();
+      void loadTables();
     });
-  }, [loadMenuList]);
+  }, [loadMenuList, loadBoardOrders, loadTables]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void loadBoardOrders(false);
+      void loadTables(false);
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [loadBoardOrders, loadTables]);
 
   const categories = [
     "All",
@@ -509,77 +697,54 @@ export default function PosPage() {
             </button>
           </div>
 
-          <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 2xl:gap-4">
-            <Card className="border-border/60">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ShoppingBag className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Takeaway</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="rounded-md border-amber-200 bg-amber-50 text-amber-600"
-                  >
-                    Waiting
-                  </Badge>
-                </div>
-                <p className="text-sm font-medium">Juna Wok</p>
-                <p className="text-xs text-muted-foreground">
-                  07-05-2025, 03:18 pm
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">4 Items</p>
-                <p className="mt-1 text-xs text-muted-foreground">#3243908</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <ArrowUpDown className="size-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Delivery</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="rounded-md border-emerald-200 bg-emerald-50 text-emerald-600"
-                  >
-                    Ready
-                  </Badge>
-                </div>
-                <p className="text-sm font-medium">Jung Kit</p>
-                <p className="text-xs text-muted-foreground">
-                  07-05-2025, 03:18 pm
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">6 Items</p>
-                <p className="mt-1 text-xs text-muted-foreground">#223399</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/60">
-              <CardContent className="p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <UtensilsCrossedIcon />
-                    <span className="text-sm font-medium">Dine in</span>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className="rounded-md border-red-200 bg-red-50 text-red-600"
-                  >
-                    Cancel
-                  </Badge>
-                </div>
-                <p className="text-sm font-medium">John Pantau</p>
-                <p className="text-xs text-muted-foreground">
-                  07-05-2025, 02:18 pm
-                </p>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  10 Items · Table 3A
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">#4487</p>
-              </CardContent>
-            </Card>
+          <div className="mb-8">
+            {boardLoading ? (
+              <p className="text-xs text-muted-foreground">Loading order board...</p>
+            ) : boardError ? (
+              <p className="text-xs text-red-600">{boardError}</p>
+            ) : boardOrders.length === 0 ? (
+              <p className="text-xs text-muted-foreground">No orders found.</p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 2xl:gap-4">
+                {boardOrders.slice(0, 5).map((order) => (
+                  <Card key={order.id} className="border-border/60">
+                    <CardContent className="p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {order.type.toLowerCase() === "takeaway" ? (
+                            <ShoppingBag className="size-4 text-muted-foreground" />
+                          ) : order.type.toLowerCase() === "delivery" ? (
+                            <ArrowUpDown className="size-4 text-muted-foreground" />
+                          ) : (
+                            <UtensilsCrossedIcon />
+                          )}
+                          <span className="text-sm font-medium">{order.type}</span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "rounded-md",
+                            order.status === "Waiting"
+                              ? "border-amber-200 bg-amber-50 text-amber-600"
+                              : order.status === "Ready"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                                : order.status === "Done"
+                                  ? "border-blue-200 bg-blue-50 text-blue-600"
+                                  : "border-red-200 bg-red-50 text-red-600"
+                          )}
+                        >
+                          {order.status}
+                        </Badge>
+                      </div>
+                      <p className="text-sm font-medium">{order.name}</p>
+                      <p className="text-xs text-muted-foreground">{order.time}</p>
+                      <p className="mt-2 text-xs text-muted-foreground">{order.items} Items</p>
+                      <p className="mt-1 text-xs text-muted-foreground">#{order.orderCode.slice(-4)}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Menu List */}
@@ -706,93 +871,101 @@ export default function PosPage() {
           ) : activeTab === "list" ? (
             <div className="flex h-full flex-col gap-4">
               <h2 className="text-base font-semibold">Order Board</h2>
-              <div className="flex gap-4 overflow-x-auto pb-2">
-                {[
-                  { key: "Waiting", label: "Waiting", color: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
-                  { key: "Ready", label: "Ready", color: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500" },
-                  { key: "Done", label: "Done", color: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500" },
-                  { key: "Cancel", label: "Cancel", color: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-500" },
-                ].map((col) => {
-                  const orders = boardOrders.filter((o) => o.status === col.key);
-                  return (
-                    <div
-                      key={col.key}
-                      className="flex min-w-72 flex-1 flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors duration-500"
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const id = e.dataTransfer.getData("orderId");
-                        setBoardOrders((prev) =>
-                          prev.map((o) => (o.id === id ? { ...o, status: col.key } : o))
-                        );
-                      }}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className={cn("size-2 rounded-full", col.dot)} />
-                          <span className="text-sm font-semibold">{col.label}</span>
+              {boardLoading ? (
+                <p className="text-xs text-muted-foreground">Loading order board...</p>
+              ) : boardError ? (
+                <p className="text-xs text-red-600">{boardError}</p>
+              ) : (
+                <div className="flex gap-4 overflow-x-auto pb-2">
+                  {[
+                    { key: "Waiting", label: "Waiting", color: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
+                    { key: "Ready", label: "Ready", color: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500" },
+                    { key: "Done", label: "Done", color: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500" },
+                    { key: "Cancel", label: "Cancel", color: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-500" },
+                  ].map((col) => {
+                    const orders = boardOrders.filter((o) => o.status === (col.key as KanbanStatus));
+                    return (
+                      <div
+                        key={col.key}
+                        className="flex min-w-72 flex-1 flex-col gap-3 rounded-xl bg-muted/30 p-3 transition-colors duration-500"
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const id = e.dataTransfer.getData("orderId");
+                          if (!id) return;
+                          void updateBoardOrderStatus(id, col.key as KanbanStatus);
+                        }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("size-2 rounded-full", col.dot)} />
+                            <span className="text-sm font-semibold">{col.label}</span>
+                          </div>
+                          <Badge variant="outline" className={cn("text-xs", col.color)}>
+                            {orders.length}
+                          </Badge>
                         </div>
-                        <Badge variant="outline" className={cn("text-xs", col.color)}>
-                          {orders.length}
-                        </Badge>
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        {orders.map((order) => (
-                          <Card
-                            key={order.id}
-                            draggable
-                            onDragStart={(e) => e.dataTransfer.setData("orderId", order.id)}
-                            onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
-                            className="cursor-grab border-border/60 shadow-sm transition-all duration-500 hover:-translate-y-0.5 hover:bg-muted/20 active:cursor-grabbing"
-                          >
-                            <CardContent className="p-3">
-                              <div className="mb-2 flex items-center justify-between">
-                                <span className="text-xs text-muted-foreground">{order.id}</span>
-                                <span className="text-xs text-muted-foreground">{order.time}</span>
-                              </div>
-                              <p className="text-sm font-medium">{order.name}</p>
-                              <p className="text-xs text-muted-foreground">{order.type}</p>
-                              <div className="mt-2 flex items-center justify-between">
-                                <span className="text-xs text-muted-foreground">{order.items} items</span>
-                                <span className="text-xs font-semibold">Rp. {order.total.toLocaleString("id-ID")}</span>
-                              </div>
-                              <div
-                                className={cn(
-                                  "grid transition-all duration-500 ease-out",
-                                  expandedOrder === order.id ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
-                                )}
-                              >
-                                <div className="overflow-hidden">
-                                  <hr className="mb-2 border-border/60" />
-                                  <p className="mb-2 text-xs font-semibold">Ordered Items:</p>
-                                  <div className="space-y-2">
-                                    {order.menuItems?.map((m, idx) => (
-                                      <div key={idx} className="flex items-start justify-between text-xs">
-                                        <div className="flex flex-col gap-0.5">
-                                          <span className="font-medium">{m.name} <span className="text-muted-foreground">x{m.qty}</span></span>
-                                          {m.variant && (
-                                            <span className="text-muted-foreground">({m.variant}{m.sugar ? `, ${m.sugar}` : ""})</span>
-                                          )}
-                                          {m.note && (
-                                            <span className="max-w-56 wrap-break-word text-[10px] italic leading-tight text-muted-foreground">
-                                              Note: {m.note}
-                                            </span>
-                                          )}
+                        <div className="flex flex-col gap-2">
+                          {orders.map((order) => (
+                            <Card
+                              key={order.id}
+                              draggable={boardStatusSaving !== order.id}
+                              onDragStart={(e) => e.dataTransfer.setData("orderId", order.id)}
+                              onClick={() => setExpandedOrder(expandedOrder === order.id ? null : order.id)}
+                              className={cn(
+                                "border-border/60 shadow-sm transition-all duration-500 hover:-translate-y-0.5 hover:bg-muted/20",
+                                boardStatusSaving === order.id ? "cursor-wait opacity-70" : "cursor-grab active:cursor-grabbing"
+                              )}
+                            >
+                              <CardContent className="p-3">
+                                <div className="mb-2 flex items-center justify-between">
+                                  <span className="text-xs text-muted-foreground">#{order.orderCode.slice(-4)}</span>
+                                  <span className="text-xs text-muted-foreground">{order.time}</span>
+                                </div>
+                                <p className="text-sm font-medium">{order.name}</p>
+                                <p className="text-xs text-muted-foreground">{order.type}</p>
+                                <div className="mt-2 flex items-center justify-between">
+                                  <span className="text-xs text-muted-foreground">{order.items} items</span>
+                                  <span className="text-xs font-semibold">Rp. {order.total.toLocaleString("id-ID")}</span>
+                                </div>
+                                <div
+                                  className={cn(
+                                    "grid transition-all duration-500 ease-out",
+                                    expandedOrder === order.id ? "grid-rows-[1fr] opacity-100 mt-2" : "grid-rows-[0fr] opacity-0"
+                                  )}
+                                >
+                                  <div className="overflow-hidden">
+                                    <hr className="mb-2 border-border/60" />
+                                    <p className="mb-2 text-xs font-semibold">Ordered Items:</p>
+                                    <div className="space-y-2">
+                                      {order.menuItems?.map((m, idx) => (
+                                        <div key={idx} className="flex items-start justify-between text-xs">
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="font-medium">{m.name} <span className="text-muted-foreground">x{m.qty}</span></span>
+                                            {m.variant && (
+                                              <span className="text-muted-foreground">({m.variant}{m.sugar ? `, ${m.sugar}` : ""})</span>
+                                            )}
+                                            {m.note && (
+                                              <span className="max-w-56 wrap-break-word text-[10px] italic leading-tight text-muted-foreground">
+                                                Note: {m.note}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="shrink-0 pl-2">Rp. {(m.price * m.qty).toLocaleString("id-ID")}</span>
                                         </div>
-                                        <span className="shrink-0 pl-2">Rp. {(m.price * m.qty).toLocaleString("id-ID")}</span>
-                                      </div>
-                                    ))}
+                                      ))}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <div className="flex h-full flex-col gap-4">
@@ -806,77 +979,89 @@ export default function PosPage() {
                   Add Table
                 </Button>
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
-                {tables.map((table) => (
-                  <Card key={table.id} className="border-border/60">
-                    <CardContent className="p-4">
-                      <div className="mb-3 flex items-center justify-between">
-                        <span className="text-sm font-semibold">{table.name}</span>
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "rounded-md text-xs",
-                            table.status === "Available" && "border-emerald-200 bg-emerald-50 text-emerald-600",
-                            table.status === "Occupied" && "border-red-200 bg-red-50 text-red-600",
-                            table.status === "Reserved" && "border-amber-200 bg-amber-50 text-amber-600",
-                            table.status === "Cleaning" && "border-blue-200 bg-blue-50 text-blue-600"
-                          )}
-                        >
-                          {table.status}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Capacity: {table.capacity} persons</p>
-                      {table.status === "Available" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3 h-7 w-full text-xs"
-                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Reserved" } : t))}
-                        >
-                          Reserved
-                        </Button>
-                      ) : table.status === "Occupied" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3 h-7 w-full text-xs"
-                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Cleaning" } : t))}
-                        >
-                          Cleaning
-                        </Button>
-                      ) : table.status === "Reserved" ? (
-                        <div className="mt-3 flex gap-2">
-                          <Button
+              {tablesLoading ? (
+                <p className="text-xs text-muted-foreground">Loading tables...</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                  {tables.map((table) => (
+                    <Card key={table.id} className="border-border/60">
+                      <CardContent className="p-4">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="text-sm font-semibold">{table.name}</span>
+                          <Badge
                             variant="outline"
-                            size="sm"
-                            className="flex-1 h-7 text-xs"
-                            onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Occupied" } : t))}
+                            className={cn(
+                              "rounded-md text-xs",
+                              table.status === "Available" && "border-emerald-200 bg-emerald-50 text-emerald-600",
+                              table.status === "Occupied" && "border-red-200 bg-red-50 text-red-600",
+                              table.status === "Reserved" && "border-amber-200 bg-amber-50 text-amber-600",
+                              table.status === "Cleaning" && "border-blue-200 bg-blue-50 text-blue-600"
+                            )}
                           >
-                            Occupied
-                          </Button>
+                            {table.status}
+                          </Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground">Capacity: {table.capacity} persons</p>
+                        {table.status === "Available" ? (
                           <Button
                             variant="outline"
                             size="sm"
-                            className="flex-1 h-7 text-xs"
-                            onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Available" } : t))}
+                            className="mt-3 h-7 w-full text-xs"
+                            disabled={tableStatusSavingId === table.id}
+                            onClick={() => void updateTableStatus(table.id, "Reserved")}
+                          >
+                            Reserved
+                          </Button>
+                        ) : table.status === "Occupied" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 h-7 w-full text-xs"
+                            disabled={tableStatusSavingId === table.id}
+                            onClick={() => void updateTableStatus(table.id, "Cleaning")}
+                          >
+                            Cleaning
+                          </Button>
+                        ) : table.status === "Reserved" ? (
+                          <div className="mt-3 flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-7 text-xs"
+                              disabled={tableStatusSavingId === table.id}
+                              onClick={() => void updateTableStatus(table.id, "Occupied")}
+                            >
+                              Occupied
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 h-7 text-xs"
+                              disabled={tableStatusSavingId === table.id}
+                              onClick={() => void updateTableStatus(table.id, "Available")}
+                            >
+                              Available
+                            </Button>
+                          </div>
+                        ) : table.status === "Cleaning" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mt-3 h-7 w-full text-xs"
+                            disabled={tableStatusSavingId === table.id}
+                            onClick={() => void updateTableStatus(table.id, "Available")}
                           >
                             Available
                           </Button>
-                        </div>
-                      ) : table.status === "Cleaning" ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="mt-3 h-7 w-full text-xs"
-                          onClick={() => setTables((prev) => prev.map((t) => t.id === table.id ? { ...t, status: "Available" } : t))}
-                        >
-                          Available
-                        </Button>
-                      ) : null}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+              {tablesError && (
+                <p className="text-xs text-red-600">{tablesError}</p>
+              )}
             </div>
           )}
           </div>
@@ -1448,24 +1633,11 @@ export default function PosPage() {
               <Button
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
                 onClick={() => {
-                  if (newTableName.trim() && newTableCapacity) {
-                    setTables((prev) => [
-                      ...prev,
-                      {
-                        id: Date.now(),
-                        name: newTableName,
-                        capacity: Number(newTableCapacity),
-                        status: "Available",
-                      },
-                    ]);
-                    setShowAddTableModal(false);
-                    setNewTableName("");
-                    setNewTableCapacity("");
-                  }
+                  void createTable();
                 }}
-                disabled={!newTableName.trim() || !newTableCapacity}
+                disabled={!newTableName.trim() || !newTableCapacity || tableCreateSaving}
               >
-                Add Table
+                {tableCreateSaving ? "Saving..." : "Add Table"}
               </Button>
             </div>
           </div>
@@ -1577,20 +1749,6 @@ export default function PosPage() {
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
                 onClick={() => {
                   setShowReceiptModal(false);
-                  const newOrderId = receiptOrderId;
-                  setBoardOrders((prev) => [
-                    {
-                      id: newOrderId,
-                      name: customerName,
-                      type: orderType.charAt(0).toUpperCase() + orderType.slice(1),
-                      status: "Waiting",
-                      time: new Date().toLocaleString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", ""),
-                      items: cart.reduce((sum, i) => sum + i.qty, 0),
-                      total,
-                      menuItems: cart.map((c) => ({ name: c.name, qty: c.qty, price: c.price, variant: c.variant, sugar: c.sugar, note: c.note })),
-                    },
-                    ...prev,
-                  ]);
                   setCart([]);
                   setCustomerName("");
                   setOrderType("");
@@ -1601,6 +1759,8 @@ export default function PosPage() {
                   setMenuQuantities({});
                   setOrderSaveError("");
                   setActiveOrderCode("");
+                  setBoardLoading(true);
+                  void loadBoardOrders();
                 }}
               >
                 Print & Save

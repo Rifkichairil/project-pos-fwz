@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -26,33 +26,14 @@ interface Transaction {
   type: string;
   items: number;
   total: number;
-  method: "Cash" | "QRIS" | "Debit" | "OVO" | "GoPay";
+  method: "Cash" | "QRIS" | "Debit" | "OVO" | "GoPay" | "Transfer";
   paymentStatus: "Success" | "Pending" | "Failed";
   orderStatus: "Pending" | "Preparing" | "Ready" | "Completed" | "Cancelled";
 }
 
-const mockTransactions: Transaction[] = [
-  { id: "TRX-2026-0001", date: "05-05-2026", time: "10:23", customer: "Budi Santoso", type: "Dine in", items: 3, total: 85000, method: "Cash", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0002", date: "05-05-2026", time: "10:45", customer: "Siti Aminah", type: "Takeaway", items: 2, total: 52000, method: "QRIS", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0003", date: "05-05-2026", time: "11:12", customer: "Ahmad Hidayat", type: "Delivery", items: 5, total: 128000, method: "GoPay", paymentStatus: "Pending", orderStatus: "Pending" },
-  { id: "TRX-2026-0004", date: "05-05-2026", time: "11:38", customer: "Dewi Kusuma", type: "Dine in", items: 4, total: 96000, method: "Debit", paymentStatus: "Success", orderStatus: "Preparing" },
-  { id: "TRX-2026-0005", date: "05-05-2026", time: "12:05", customer: "Rudi Hartono", type: "Takeaway", items: 2, total: 45000, method: "OVO", paymentStatus: "Failed", orderStatus: "Cancelled" },
-  { id: "TRX-2026-0006", date: "05-05-2026", time: "12:30", customer: "Lina Marlina", type: "Dine in", items: 6, total: 142000, method: "Cash", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0007", date: "05-05-2026", time: "13:15", customer: "Juna Wok", type: "Delivery", items: 3, total: 75000, method: "QRIS", paymentStatus: "Pending", orderStatus: "Pending" },
-  { id: "TRX-2026-0008", date: "05-05-2026", time: "13:42", customer: "Jung Kit", type: "Takeaway", items: 2, total: 52000, method: "GoPay", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0009", date: "05-05-2026", time: "14:10", customer: "John Pantau", type: "Dine in", items: 5, total: 128000, method: "Debit", paymentStatus: "Success", orderStatus: "Ready" },
-  { id: "TRX-2026-0010", date: "05-05-2026", time: "14:55", customer: "Jane Doe", type: "Takeaway", items: 1, total: 26000, method: "OVO", paymentStatus: "Failed", orderStatus: "Cancelled" },
-  { id: "TRX-2026-0011", date: "05-05-2026", time: "15:20", customer: "Bob Smith", type: "Dine in", items: 4, total: 96000, method: "Cash", paymentStatus: "Success", orderStatus: "Preparing" },
-  { id: "TRX-2026-0012", date: "05-05-2026", time: "16:00", customer: "Alice Chan", type: "Delivery", items: 2, total: 45000, method: "QRIS", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0013", date: "05-05-2026", time: "16:45", customer: "Budi Santoso", type: "Dine in", items: 3, total: 85000, method: "GoPay", paymentStatus: "Pending", orderStatus: "Pending" },
-  { id: "TRX-2026-0014", date: "05-05-2026", time: "17:10", customer: "Siti Aminah", type: "Takeaway", items: 2, total: 52000, method: "Debit", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0015", date: "05-05-2026", time: "17:40", customer: "Ahmad Hidayat", type: "Dine in", items: 5, total: 128000, method: "OVO", paymentStatus: "Success", orderStatus: "Ready" },
-  { id: "TRX-2026-0016", date: "05-05-2026", time: "18:05", customer: "Dewi Kusuma", type: "Delivery", items: 4, total: 96000, method: "Cash", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0017", date: "05-05-2026", time: "18:35", customer: "Rudi Hartono", type: "Dine in", items: 2, total: 45000, method: "QRIS", paymentStatus: "Failed", orderStatus: "Cancelled" },
-  { id: "TRX-2026-0018", date: "05-05-2026", time: "19:00", customer: "Lina Marlina", type: "Takeaway", items: 3, total: 72000, method: "GoPay", paymentStatus: "Success", orderStatus: "Completed" },
-  { id: "TRX-2026-0019", date: "05-05-2026", time: "19:30", customer: "Juna Wok", type: "Dine in", items: 4, total: 110000, method: "Debit", paymentStatus: "Pending", orderStatus: "Preparing" },
-  { id: "TRX-2026-0020", date: "05-05-2026", time: "20:00", customer: "Jung Kit", type: "Delivery", items: 2, total: 58000, method: "OVO", paymentStatus: "Success", orderStatus: "Completed" },
-];
+type TransactionsApiResponse = {
+  transactions: Transaction[];
+};
 
 const perPage = 10;
 
@@ -63,6 +44,7 @@ const methodIcon = (method: string) => {
     case "Debit": return <CreditCard className="size-3.5 text-violet-600" />;
     case "OVO": return <Wallet className="size-3.5 text-purple-600" />;
     case "GoPay": return <Wallet className="size-3.5 text-cyan-600" />;
+    case "Transfer": return <Wallet className="size-3.5 text-slate-600" />;
     default: return <Receipt className="size-3.5 text-muted-foreground" />;
   }
 };
@@ -124,8 +106,46 @@ export default function TransactionsPage() {
   const [statusFilter, setStatusFilter] = useState<"All" | "Success" | "Pending" | "Failed">("All");
   const [dateFilter, setDateFilter] = useState<"All" | "Today" | "Weekly" | "Monthly">("All");
   const [page, setPage] = useState(1);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const filtered = mockTransactions.filter((t) => {
+  const loadTransactions = useCallback(async (showLoader = true) => {
+    if (showLoader) {
+      setLoading(true);
+    }
+
+    try {
+      const response = await fetch("/api/transactions?limit=30", { cache: "no-store" });
+      if (!response.ok) {
+        throw new Error("Failed to load transactions");
+      }
+
+      const data = (await response.json()) as TransactionsApiResponse;
+      setTransactions(data.transactions || []);
+      setError("");
+    } catch {
+      setError("Failed to load transactions");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadTransactions();
+    });
+  }, [loadTransactions]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void loadTransactions(false);
+    }, 3000);
+
+    return () => clearInterval(timer);
+  }, [loadTransactions]);
+
+  const filtered = transactions.filter((t) => {
     const matchesSearch =
       t.id.toLowerCase().includes(search.toLowerCase()) ||
       t.customer.toLowerCase().includes(search.toLowerCase()) ||
@@ -162,17 +182,17 @@ export default function TransactionsPage() {
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
-  const totalNominal = mockTransactions.reduce((sum, t) => sum + t.total, 0);
-  const successCount = mockTransactions.filter((t) => t.paymentStatus === "Success").length;
-  const pendingCount = mockTransactions.filter((t) => t.paymentStatus === "Pending").length;
-  const failedCount = mockTransactions.filter((t) => t.paymentStatus === "Failed").length;
-  const successNominal = mockTransactions
+  const totalNominal = transactions.reduce((sum, t) => sum + t.total, 0);
+  const successCount = transactions.filter((t) => t.paymentStatus === "Success").length;
+  const pendingCount = transactions.filter((t) => t.paymentStatus === "Pending").length;
+  const failedCount = transactions.filter((t) => t.paymentStatus === "Failed").length;
+  const successNominal = transactions
     .filter((t) => t.paymentStatus === "Success")
     .reduce((sum, t) => sum + t.total, 0);
-  const pendingNominal = mockTransactions
+  const pendingNominal = transactions
     .filter((t) => t.paymentStatus === "Pending")
     .reduce((sum, t) => sum + t.total, 0);
-  const failedNominal = mockTransactions
+  const failedNominal = transactions
     .filter((t) => t.paymentStatus === "Failed")
     .reduce((sum, t) => sum + t.total, 0);
 
@@ -190,7 +210,7 @@ export default function TransactionsPage() {
             <CardContent className="flex flex-col gap-1 p-4">
               <span className="text-xs text-muted-foreground">Total</span>
               <span className="text-lg font-bold">Rp. {totalNominal.toLocaleString("id-ID")}</span>
-              <span className="text-[11px] text-muted-foreground">{mockTransactions.length} transaksi</span>
+              <span className="text-[11px] text-muted-foreground">{transactions.length} transaksi</span>
             </CardContent>
           </Card>
           <Card className="animate-slide-up" style={{ animationDelay: '50ms' }}>
@@ -297,27 +317,41 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {paginated.map((t, index) => (
-                    <tr 
-                      key={t.id} 
-                      className="hover:bg-muted/30 transition-all duration-200 animate-slide-up"
-                      style={{ animationDelay: `${350 + index * 30}ms` }}
-                    >
-                      <td className="py-2.5 text-left font-medium">{t.id}</td>
-                      <td className="py-2.5 text-left text-muted-foreground">{t.date}, {t.time}</td>
-                      <td className="py-2.5 text-left">{t.customer}</td>
-                      <td className="py-2.5 text-left text-muted-foreground">{t.type}</td>
-                      <td className="py-2.5 text-left font-semibold">Rp {t.total.toLocaleString("id-ID")}</td>
-                      <td className="py-2.5">
-                        <div className="flex items-center justify-center gap-1.5">
-                          {methodIcon(t.method)}
-                          <span className="text-muted-foreground">{t.method}</span>
-                        </div>
-                      </td>
-                      <td className="py-2.5">{paymentStatusBadge(t.paymentStatus)}</td>
-                      <td className="py-2.5">{orderStatusBadge(t.orderStatus)}</td>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">Loading transactions...</td>
                     </tr>
-                  ))}
+                  ) : error ? (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-xs text-red-600">{error}</td>
+                    </tr>
+                  ) : paginated.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">No transactions found.</td>
+                    </tr>
+                  ) : (
+                    paginated.map((t, index) => (
+                      <tr
+                        key={t.id}
+                        className="hover:bg-muted/30 transition-all duration-200 animate-slide-up"
+                        style={{ animationDelay: `${350 + index * 30}ms` }}
+                      >
+                        <td className="py-2.5 text-left font-medium">{t.id}</td>
+                        <td className="py-2.5 text-left text-muted-foreground">{t.date}, {t.time}</td>
+                        <td className="py-2.5 text-left">{t.customer}</td>
+                        <td className="py-2.5 text-left text-muted-foreground">{t.type}</td>
+                        <td className="py-2.5 text-left font-semibold">Rp {t.total.toLocaleString("id-ID")}</td>
+                        <td className="py-2.5">
+                          <div className="flex items-center justify-center gap-1.5">
+                            {methodIcon(t.method)}
+                            <span className="text-muted-foreground">{t.method}</span>
+                          </div>
+                        </td>
+                        <td className="py-2.5">{paymentStatusBadge(t.paymentStatus)}</td>
+                        <td className="py-2.5">{orderStatusBadge(t.orderStatus)}</td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
