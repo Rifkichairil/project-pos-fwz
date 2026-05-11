@@ -41,6 +41,7 @@ type PosOrderBoardRow = {
   items_count: number;
   menu_items: Array<{ name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }>;
   kanban_note: string | null;
+  kanban_changed_at: string | null;
 };
 
 type PosOrderStatusPatchPayload = {
@@ -83,6 +84,21 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawLimit = Number(searchParams.get("limit") || "30");
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 100) : 30;
+  const period = (searchParams.get("period") || "today").toLowerCase();
+  const startDate = searchParams.get("startDate") || "";
+  const endDate = searchParams.get("endDate") || "";
+
+  let dateCondition = "so.order_at::date = CURRENT_DATE";
+  const params: Array<number | string> = [limit];
+
+  if (period === "weekly") {
+    dateCondition = "so.order_at >= date_trunc('week', NOW()) AND so.order_at < date_trunc('week', NOW()) + INTERVAL '1 week'";
+  } else if (period === "monthly") {
+    dateCondition = "so.order_at >= date_trunc('month', NOW()) AND so.order_at < date_trunc('month', NOW()) + INTERVAL '1 month'";
+  } else if (period === "custom" && startDate && endDate) {
+    params.push(startDate, endDate);
+    dateCondition = "so.order_at >= $2::date AND so.order_at < ($3::date + INTERVAL '1 day')";
+  }
 
   try {
     const result = await db.query<PosOrderBoardRow>(
@@ -95,7 +111,8 @@ export async function GET(request: Request) {
           so.notes,
           COALESCE(items.items_count, 0)::int AS items_count,
           COALESCE(items.menu_items, '[]'::json) AS menu_items,
-          kanban.kanban_note
+          kanban.kanban_note,
+          kanban.kanban_changed_at::text
         FROM sales_orders so
         LEFT JOIN LATERAL (
           SELECT
@@ -118,17 +135,18 @@ export async function GET(request: Request) {
           WHERE soi.sales_order_id = so.id
         ) items ON TRUE
         LEFT JOIN LATERAL (
-          SELECT osh.note AS kanban_note
+          SELECT osh.note AS kanban_note, osh.changed_at AS kanban_changed_at
           FROM order_status_history osh
           WHERE osh.sales_order_id = so.id
             AND osh.note LIKE 'kanban:%'
           ORDER BY osh.changed_at DESC, osh.id DESC
           LIMIT 1
         ) kanban ON TRUE
-        ORDER BY so.order_at DESC
+        WHERE ${dateCondition}
+        ORDER BY COALESCE(kanban.kanban_changed_at, so.order_at) DESC, so.order_at DESC
         LIMIT $1
       `,
-      [limit]
+      params
     );
 
     const orders = result.rows.map((row) => {

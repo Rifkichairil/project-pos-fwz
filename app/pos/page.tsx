@@ -52,6 +52,7 @@ interface BoardOrder {
   type: string;
   status: KanbanStatus;
   time: string;
+  orderAt?: string;
   items: number;
   total: number;
   menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }[];
@@ -172,6 +173,9 @@ export default function PosPage() {
   const [boardLoading, setBoardLoading] = useState(true);
   const [boardError, setBoardError] = useState("");
   const [boardStatusSaving, setBoardStatusSaving] = useState<string | null>(null);
+  const [boardDateFilter, setBoardDateFilter] = useState<"today" | "weekly" | "monthly" | "custom">("today");
+  const [boardCustomStartDate, setBoardCustomStartDate] = useState("");
+  const [boardCustomEndDate, setBoardCustomEndDate] = useState("");
 
   const [tables, setTables] = useState<PosTable[]>([]);
   const [tablesLoading, setTablesLoading] = useState(true);
@@ -217,8 +221,19 @@ export default function PosPage() {
     if (showLoader) {
       setBoardLoading(true);
     }
+
     try {
-      const response = await fetch("/api/pos?limit=30", { cache: "no-store" });
+      const params = new URLSearchParams({
+        limit: "100",
+        period: boardDateFilter,
+      });
+
+      if (boardDateFilter === "custom" && boardCustomStartDate && boardCustomEndDate) {
+        params.set("startDate", boardCustomStartDate);
+        params.set("endDate", boardCustomEndDate);
+      }
+
+      const response = await fetch(`/api/pos?${params.toString()}`, { cache: "no-store" });
       if (!response.ok) {
         throw new Error("Failed to load order board");
       }
@@ -231,7 +246,7 @@ export default function PosPage() {
     } finally {
       setBoardLoading(false);
     }
-  }, []);
+  }, [boardCustomEndDate, boardCustomStartDate, boardDateFilter]);
 
   const updateBoardOrderStatus = useCallback(async (orderId: string, nextStatus: KanbanStatus) => {
     const current = boardOrders.find((order) => order.id === orderId);
@@ -240,9 +255,21 @@ export default function PosPage() {
     }
 
     setBoardStatusSaving(orderId);
-    setBoardOrders((prev) =>
-      prev.map((order) => (order.id === orderId ? { ...order, status: nextStatus } : order))
-    );
+    setBoardOrders((prev) => {
+      const moving = prev.find((order) => order.id === orderId);
+      if (!moving) return prev;
+
+      const nextOrders = prev.filter((order) => order.id !== orderId);
+      const moved = { ...moving, status: nextStatus };
+      const destinationIndex = nextOrders.findIndex((order) => order.status === nextStatus);
+
+      if (destinationIndex === -1) {
+        return [moved, ...nextOrders];
+      }
+
+      nextOrders.splice(destinationIndex, 0, moved);
+      return nextOrders;
+    });
 
     try {
       const response = await fetch("/api/pos", {
@@ -260,13 +287,11 @@ export default function PosPage() {
         throw new Error("Failed to update order status");
       }
     } catch {
-      setBoardOrders((prev) =>
-        prev.map((order) => (order.id === orderId ? { ...order, status: current.status } : order))
-      );
+      void loadBoardOrders(false);
     } finally {
       setBoardStatusSaving(null);
     }
-  }, [boardOrders]);
+  }, [boardOrders, loadBoardOrders]);
 
   const loadTables = useCallback(async (showLoader = true) => {
     if (showLoader) {
@@ -870,7 +895,61 @@ export default function PosPage() {
             </>
           ) : activeTab === "list" ? (
             <div className="flex h-full flex-col gap-4">
-              <h2 className="text-base font-semibold">Order Board</h2>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-base font-semibold">Order Board</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant={boardDateFilter === "today" ? "default" : "outline"}
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setBoardDateFilter("today")}
+                  >
+                    Today
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={boardDateFilter === "weekly" ? "default" : "outline"}
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setBoardDateFilter("weekly")}
+                  >
+                    Weekly
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={boardDateFilter === "monthly" ? "default" : "outline"}
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setBoardDateFilter("monthly")}
+                  >
+                    Monthly
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={boardDateFilter === "custom" ? "default" : "outline"}
+                    className="h-8 px-3 text-xs"
+                    onClick={() => setBoardDateFilter("custom")}
+                  >
+                    Custom Range
+                  </Button>
+                </div>
+              </div>
+
+              {boardDateFilter === "custom" && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    type="date"
+                    value={boardCustomStartDate}
+                    onChange={(e) => setBoardCustomStartDate(e.target.value)}
+                    className="h-8 w-[170px] text-xs"
+                  />
+                  <Input
+                    type="date"
+                    value={boardCustomEndDate}
+                    onChange={(e) => setBoardCustomEndDate(e.target.value)}
+                    className="h-8 w-[170px] text-xs"
+                  />
+                </div>
+              )}
+
               {boardLoading ? (
                 <p className="text-xs text-muted-foreground">Loading order board...</p>
               ) : boardError ? (
