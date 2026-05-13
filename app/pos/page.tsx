@@ -527,6 +527,13 @@ export default function PosPage() {
     });
   };
 
+  const switchToNewOrderTab = () => {
+    setActiveTab("new");
+    setBoardDateFilter("today");
+    setBoardCustomStartDate("");
+    setBoardCustomEndDate("");
+  };
+
   const saveOrderToDb = async (paymentStatus: "pending" | "paid", methodOverride?: PaymentMethod) => {
     const orderCode = activeOrderCode || createOrderCode();
     const payment = methodOverride || paymentMethod;
@@ -656,7 +663,7 @@ export default function PosPage() {
         {/* Tabs */}
         <div className="flex gap-1 border-b px-4 pt-4 sm:px-6">
           <button
-            onClick={() => setActiveTab("new")}
+            onClick={switchToNewOrderTab}
             className={cn(
               "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
               activeTab === "new"

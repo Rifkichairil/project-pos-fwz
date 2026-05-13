@@ -13,7 +13,6 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   AlertTriangle,
-  Boxes,
   Receipt,
   ArrowLeftRight,
   ChevronLeft,
@@ -23,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type MovementType = "in" | "out" | "adjustment";
+type MovementTypeFilter = "all" | MovementType;
 
 type IngredientData = {
   id: number;
@@ -68,6 +68,16 @@ type InventoryApiResponse = {
 
 const formatRp = (n: number) => `Rp. ${n.toLocaleString("id-ID")}`;
 
+function getPurchaseSequence(id: string) {
+  const match = id.match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
+function getMovementSequence(id: string) {
+  const match = id.match(/(\d+)$/);
+  return match ? Number(match[1]) : 0;
+}
+
 function paginateData<T>(data: T[], page: number, perPage: number) {
   const totalPages = Math.max(1, Math.ceil(data.length / perPage));
   const safePage = Math.min(page, totalPages);
@@ -78,7 +88,7 @@ function paginateData<T>(data: T[], page: number, perPage: number) {
 
 export default function InventoryPage() {
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("ingredients");
+  const [activeTab, setActiveTab] = useState("stock");
 
   const [ingredientsData, setIngredientsData] = useState<IngredientData[]>([]);
   const [purchasesData, setPurchasesData] = useState<PurchaseData[]>([]);
@@ -95,10 +105,10 @@ export default function InventoryPage() {
   const [newMovement, setNewMovement] = useState({ item: "", type: "in" as "in" | "out", qty: "", unit: "", ref: "", user: "" });
   const [restock, setRestock] = useState({ ingredientId: "", qty: "", ref: "" });
 
-  const [ingredientsPage, setIngredientsPage] = useState(1);
   const [stockPage, setStockPage] = useState(1);
   const [purchasePage, setPurchasePage] = useState(1);
   const [movementPage, setMovementPage] = useState(1);
+  const [movementTypeFilter, setMovementTypeFilter] = useState<MovementTypeFilter>("all");
   const perPage = 8;
 
   const closeAllModals = () => {
@@ -164,20 +174,24 @@ export default function InventoryPage() {
 
   const lowStock = ingredientsData.filter((i) => i.stock <= i.minStock);
 
-  const filteredPurchases = purchasesData.filter((p) =>
-    p.item.toLowerCase().includes(search.toLowerCase()) ||
-    p.supplier.toLowerCase().includes(search.toLowerCase()) ||
-    p.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredPurchases = purchasesData
+    .filter((p) =>
+      p.item.toLowerCase().includes(search.toLowerCase()) ||
+      p.supplier.toLowerCase().includes(search.toLowerCase()) ||
+      p.id.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => getPurchaseSequence(b.id) - getPurchaseSequence(a.id));
 
-  const filteredMovements = movementsData.filter((m) =>
-    m.item.toLowerCase().includes(search.toLowerCase()) ||
-    m.ref.toLowerCase().includes(search.toLowerCase()) ||
-    m.user.toLowerCase().includes(search.toLowerCase()) ||
-    m.id.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMovements = movementsData
+    .filter((m) => movementTypeFilter === "all" || m.type === movementTypeFilter)
+    .filter((m) =>
+      m.item.toLowerCase().includes(search.toLowerCase()) ||
+      m.ref.toLowerCase().includes(search.toLowerCase()) ||
+      m.user.toLowerCase().includes(search.toLowerCase()) ||
+      m.id.toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => getMovementSequence(b.id) - getMovementSequence(a.id));
 
-  const ingredientsPagination = paginateData(filteredIngredients, ingredientsPage, perPage);
   const stockPagination = paginateData(filteredIngredients, stockPage, perPage);
   const purchasePagination = paginateData(filteredPurchases, purchasePage, perPage);
   const movementPagination = paginateData(filteredMovements, movementPage, perPage);
@@ -212,6 +226,7 @@ export default function InventoryPage() {
       total: qty * price,
       supplier: newPurchase.supplier || "-",
     }]);
+    setPurchasePage(1);
     closeAllModals();
   };
 
@@ -228,6 +243,7 @@ export default function InventoryPage() {
       ref: newMovement.ref || "-",
       user: newMovement.user || "Admin",
     }]);
+    setMovementPage(1);
     closeAllModals();
   };
 
@@ -250,6 +266,7 @@ export default function InventoryPage() {
       ref: restock.ref || "Restock",
       user: "Admin",
     }]);
+    setMovementPage(1);
     closeAllModals();
   };
 
@@ -261,18 +278,16 @@ export default function InventoryPage() {
         <Button
           className="h-8 gap-2 rounded-xl bg-primary px-3 text-xs font-medium hover:bg-primary/90 sm:h-9 sm:px-4 sm:text-sm"
           onClick={() => {
-            if (activeTab === "ingredients") setShowAddIngredient(true);
+            if (activeTab === "stock") setShowAddIngredient(true);
             else if (activeTab === "purchase") setShowAddPurchase(true);
             else if (activeTab === "movement") setShowAddMovement(true);
-            else if (activeTab === "stock") setShowRestock(true);
           }}
         >
           <Plus className="size-3.5 sm:size-4" />
           <span className="hidden sm:inline">
-            {activeTab === "ingredients" && "Add Ingredient"}
+            {activeTab === "stock" && "Add Ingredient"}
             {activeTab === "purchase" && "Add Purchase"}
             {activeTab === "movement" && "Add Movement"}
-            {activeTab === "stock" && "Restock"}
           </span>
           <span className="sm:hidden">Add</span>
         </Button>
@@ -282,20 +297,6 @@ export default function InventoryPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Tab Navigation */}
         <div className="flex gap-1 border-b px-4 pt-4 sm:px-6">
-          <button
-            onClick={() => {
-              setActiveTab("ingredients");
-              setIngredientsPage(1);
-            }}
-            className={cn(
-              "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
-              activeTab === "ingredients"
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-            )}
-          >
-            <Boxes className="mr-1.5 inline size-3.5" /> Master Bahan
-          </button>
           <button
             onClick={() => {
               setActiveTab("stock");
@@ -349,7 +350,6 @@ export default function InventoryPage() {
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
-                setIngredientsPage(1);
                 setStockPage(1);
                 setPurchasePage(1);
                 setMovementPage(1);
@@ -364,112 +364,38 @@ export default function InventoryPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-          {/* ─── Master Bahan ─── */}
-          {activeTab === "ingredients" && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Master Bahan</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[500px] text-left text-xs">
-                    <thead>
-                      <tr className="border-b text-muted-foreground">
-                        <th className="pb-2 font-medium">Nama Bahan</th>
-                        <th className="pb-2 font-medium">Satuan</th>
-                        <th className="pb-2 font-medium">Harga Beli</th>
-                        <th className="pb-2 font-medium">Supplier</th>
-                        <th className="pb-2 font-medium">Stok</th>
-                        <th className="pb-2 font-medium">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                    {ingredientsPagination.paginated.map((i) => {
-                      const isLow = i.stock <= i.minStock;
-                      return (
-                        <tr key={i.id} className="group">
-                          <td className="py-2.5 font-medium">{i.name}</td>
-                          <td className="py-2.5 text-muted-foreground">{i.unit}</td>
-                          <td className="py-2.5">{formatRp(i.price)} / {i.unit}</td>
-                          <td className="py-2.5 text-muted-foreground">{i.supplier}</td>
-                          <td className="py-2.5">{i.stock.toLocaleString("id-ID")} {i.unit}</td>
-                          <td className="py-2.5">
-                            {isLow ? (
-                              <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600 text-[10px]">
-                                <AlertTriangle className="mr-1 size-3" /> Low
-                              </Badge>
-                            ) : (
-                              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-600 text-[10px]">
-                                OK
-                              </Badge>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-                {filteredIngredients.length > perPage && (
-                  <div className="mt-4 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                      Showing {(ingredientsPagination.safePage - 1) * perPage + 1}–{Math.min(ingredientsPagination.safePage * perPage, filteredIngredients.length)} of {filteredIngredients.length}
-                    </span>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        disabled={ingredientsPagination.safePage <= 1}
-                        onClick={() => setIngredientsPage(ingredientsPagination.safePage - 1)}
-                      >
-                        <ChevronLeft className="size-3.5" />
-                      </Button>
-                      {Array.from({ length: ingredientsPagination.totalPages }, (_, i) => i + 1).map((page) => (
-                        <Button
-                          key={page}
-                          variant={ingredientsPagination.safePage === page ? "default" : "outline"}
-                          size="sm"
-                          className={cn("h-7 min-w-[28px] px-1.5 text-xs", ingredientsPagination.safePage === page ? "bg-slate-600 hover:bg-slate-700" : "")}
-                          onClick={() => setIngredientsPage(page)}
-                        >
-                          {page}
-                        </Button>
-                      ))}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        disabled={ingredientsPagination.safePage >= ingredientsPagination.totalPages}
-                        onClick={() => setIngredientsPage(ingredientsPagination.safePage + 1)}
-                      >
-                        <ChevronRight className="size-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
           {/* ─── Stock Management ─── */}
           {activeTab === "stock" && (
             <>
             {/* Alert Cards */}
             {lowStock.length > 0 && (
-              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {lowStock.map((i) => (
                   <Card key={i.id} className="border-red-200 bg-red-50/50">
-                    <CardContent className="p-2.5">
-                      <div className="flex items-center gap-1.5">
-                        <AlertTriangle className="size-3.5 text-red-500" />
-                        <span className="text-[11px] font-semibold text-red-700">Low Stock</span>
+                    <CardContent className="p-2 sm:p-2.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1">
+                            <AlertTriangle className="size-3 text-red-500" />
+                            <span className="text-[10px] font-semibold text-red-700">Low Stock</span>
+                          </div>
+                          <p className="mt-0.5 truncate text-[11px] font-bold sm:text-xs">{i.name}</p>
+                          <p className="truncate text-[10px] text-muted-foreground">
+                            {i.stock.toLocaleString("id-ID")} {i.unit} (min: {i.minStock.toLocaleString("id-ID")})
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 shrink-0 border-red-300 px-2 text-[10px] text-red-700 hover:bg-red-100"
+                          onClick={() => {
+                            setRestock({ ingredientId: String(i.id), qty: "", ref: "" });
+                            setShowRestock(true);
+                          }}
+                        >
+                          Restock
+                        </Button>
                       </div>
-                      <p className="mt-0.5 text-xs font-bold">{i.name}</p>
-                      <p className="text-[10px] text-muted-foreground">{i.stock.toLocaleString("id-ID")} {i.unit} (min: {i.minStock.toLocaleString("id-ID")})</p>
-                      <Button size="sm" variant="outline" className="mt-1.5 h-6 text-[10px] border-red-300 px-2 text-red-700 hover:bg-red-100">
-                        Restock
-                      </Button>
                     </CardContent>
                   </Card>
                 ))}
@@ -486,34 +412,55 @@ export default function InventoryPage() {
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 font-medium">Nama Bahan</th>
+                        <th className="pb-2 font-medium">Satuan</th>
+                        <th className="pb-2 font-medium">Harga Beli</th>
+                        <th className="pb-2 font-medium">Supplier</th>
                         <th className="pb-2 font-medium">Stok Saat Ini</th>
                         <th className="pb-2 font-medium">Minimum</th>
                         <th className="pb-2 font-medium">Masuk (30d)</th>
                         <th className="pb-2 font-medium">Keluar (30d)</th>
+                        <th className="pb-2 font-medium">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                    {stockPagination.paginated.map((i) => (
-                      <tr key={i.id}>
-                        <td className="py-2.5 font-medium">{i.name}</td>
-                        <td className={cn("py-2.5 font-semibold", i.stock <= i.minStock ? "text-red-600" : "text-emerald-600")}>
-                          {i.stock.toLocaleString("id-ID")} {i.unit}
-                        </td>
-                        <td className="py-2.5 text-muted-foreground">{i.minStock.toLocaleString("id-ID")} {i.unit}</td>
-                        <td className="py-2.5 text-emerald-600">
-                          <span className="flex items-center gap-1">
-                            <ArrowDownLeft className="size-3" />
-                            {i.in30d.toLocaleString("id-ID")} {i.unit}
-                          </span>
-                        </td>
-                        <td className="py-2.5 text-red-500">
-                          <span className="flex items-center gap-1">
-                            <ArrowUpRight className="size-3" />
-                            {i.out30d.toLocaleString("id-ID")} {i.unit}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
+                    {stockPagination.paginated.map((i) => {
+                      const isLow = i.stock <= i.minStock;
+                      return (
+                        <tr key={i.id}>
+                          <td className="py-2.5 font-medium">{i.name}</td>
+                          <td className="py-2.5 text-muted-foreground">{i.unit}</td>
+                          <td className="py-2.5">{formatRp(i.price)} / {i.unit}</td>
+                          <td className="py-2.5 text-muted-foreground">{i.supplier}</td>
+                          <td className={cn("py-2.5 font-semibold", isLow ? "text-red-600" : "text-emerald-600")}>
+                            {i.stock.toLocaleString("id-ID")} {i.unit}
+                          </td>
+                          <td className="py-2.5 text-muted-foreground">{i.minStock.toLocaleString("id-ID")} {i.unit}</td>
+                          <td className="py-2.5 text-emerald-600">
+                            <span className="flex items-center gap-1">
+                              <ArrowDownLeft className="size-3" />
+                              {i.in30d.toLocaleString("id-ID")} {i.unit}
+                            </span>
+                          </td>
+                          <td className="py-2.5 text-red-500">
+                            <span className="flex items-center gap-1">
+                              <ArrowUpRight className="size-3" />
+                              {i.out30d.toLocaleString("id-ID")} {i.unit}
+                            </span>
+                          </td>
+                          <td className="py-2.5">
+                            {isLow ? (
+                              <Badge variant="outline" className="border-red-200 bg-red-50 text-[10px] text-red-600">
+                                <AlertTriangle className="mr-1 size-3" /> Low
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-[10px] text-emerald-600">
+                                OK
+                              </Badge>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
                 </div>
@@ -640,8 +587,74 @@ export default function InventoryPage() {
           {/* ─── Stock Movement ─── */}
           {activeTab === "movement" && (
             <Card>
-              <CardHeader className="pb-2">
+              <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-sm font-semibold">Stock Movement History</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "h-8 rounded-xl border px-3 text-xs",
+                      movementTypeFilter === "all"
+                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
+                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
+                    )}
+                    onClick={() => {
+                      setMovementTypeFilter("all");
+                      setMovementPage(1);
+                    }}
+                  >
+                    Semua
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "h-8 rounded-xl border px-3 text-xs",
+                      movementTypeFilter === "in"
+                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
+                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
+                    )}
+                    onClick={() => {
+                      setMovementTypeFilter("in");
+                      setMovementPage(1);
+                    }}
+                  >
+                    Masuk
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "h-8 rounded-xl border px-3 text-xs",
+                      movementTypeFilter === "out"
+                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
+                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
+                    )}
+                    onClick={() => {
+                      setMovementTypeFilter("out");
+                      setMovementPage(1);
+                    }}
+                  >
+                    Keluar
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className={cn(
+                      "h-8 rounded-xl border px-3 text-xs",
+                      movementTypeFilter === "adjustment"
+                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
+                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
+                    )}
+                    onClick={() => {
+                      setMovementTypeFilter("adjustment");
+                      setMovementPage(1);
+                    }}
+                  >
+                    Adjustment
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
