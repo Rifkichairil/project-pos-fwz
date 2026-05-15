@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 import {
   Select,
   SelectContent,
@@ -30,6 +31,8 @@ import {
   Users,
   User,
   Plus as AddIcon,
+  Info,
+  X,
 } from "lucide-react";
 
 interface CartItem {
@@ -41,6 +44,7 @@ interface CartItem {
   qty: number;
   note: string;
   image: string;
+  category: string;
 }
 
 type KanbanStatus = "Waiting" | "Ready" | "Done" | "Cancel";
@@ -161,6 +165,25 @@ export default function PosPage() {
   const [showMidtransQRModal, setShowMidtransQRModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [receiptOrderId, setReceiptOrderId] = useState("");
+  const [receiptData, setReceiptData] = useState<{
+    customerName: string;
+    orderType: string;
+    tableNumber: string;
+    paymentMethod: PaymentMethod;
+    cashAmount: string;
+    cart: CartItem[];
+    subtotal: number;
+    discount: number;
+    taxPb1: number;
+    taxPb1Amount: number;
+    taxService: number;
+    taxServiceAmount: number;
+    taxPpn: number;
+    taxPpnAmount: number;
+    taxes: number;
+    total: number;
+    change: number;
+  } | null>(null);
   const [midtransRedirectUrl, setMidtransRedirectUrl] = useState("");
   const [midtransLoading, setMidtransLoading] = useState(false);
   const [midtransError, setMidtransError] = useState("");
@@ -186,6 +209,12 @@ export default function PosPage() {
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableCapacity, setNewTableCapacity] = useState("");
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  const [taxPb1, setTaxPb1] = useState(0);
+  const [taxService, setTaxService] = useState(0);
+  const [taxPpn, setTaxPpn] = useState(0);
 
   const cashierName = "Jennie Doe";
 
@@ -194,6 +223,26 @@ export default function PosPage() {
     CASHBACK5: { label: "CASHBACK5", calc: () => 5000 },
     BUNDLE20: { label: "BUNDLE20", calc: (sub) => Math.round(sub * 0.2) },
   };
+
+  const loadTaxSettings = useCallback(async () => {
+    try {
+      const response = await fetch("/api/settings", { cache: "no-store" });
+      if (!response.ok) return;
+      const data = await response.json() as {
+        pb1Enabled: boolean;
+        pb1Rate: number;
+        serviceEnabled: boolean;
+        serviceRate: number;
+        ppnEnabled: boolean;
+        ppnRate: number;
+      };
+      setTaxPb1(data.pb1Enabled ? data.pb1Rate : 0);
+      setTaxService(data.serviceEnabled ? data.serviceRate : 0);
+      setTaxPpn(data.ppnEnabled ? data.ppnRate : 0);
+    } catch {
+      // fallback to 0
+    }
+  }, []);
 
   const loadMenuList = useCallback(async () => {
     try {
@@ -215,6 +264,7 @@ export default function PosPage() {
       setMenuError("");
     } catch {
       setMenuError("Failed to load menu list");
+      toast.error("Gagal memuat daftar menu");
     } finally {
       setMenuLoading(false);
     }
@@ -361,6 +411,7 @@ export default function PosPage() {
 
     if (!name || !Number.isFinite(capacity) || capacity <= 0) {
       setTablesError("Table name and capacity are required");
+      toast.error("Nama meja dan kapasitas harus diisi");
       return;
     }
 
@@ -398,8 +449,11 @@ export default function PosPage() {
       setShowAddTableModal(false);
       setNewTableName("");
       setNewTableCapacity("");
+      toast.success("Meja berhasil ditambahkan!");
     } catch (error) {
-      setTablesError(error instanceof Error ? error.message : "Failed to create table");
+      const msg = error instanceof Error ? error.message : "Failed to create table";
+      setTablesError(msg);
+      toast.error(msg);
     } finally {
       setTableCreateSaving(false);
     }
@@ -410,8 +464,9 @@ export default function PosPage() {
       void loadMenuList();
       void loadBoardOrders();
       void loadTables();
+      void loadTaxSettings();
     });
-  }, [loadMenuList, loadBoardOrders, loadTables]);
+  }, [loadMenuList, loadBoardOrders, loadTables, loadTaxSettings]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -421,6 +476,11 @@ export default function PosPage() {
 
     return () => clearInterval(timer);
   }, [loadBoardOrders, loadTables]);
+
+  useEffect(() => {
+    const clock = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(clock);
+  }, []);
 
   const categories = [
     "All",
@@ -433,8 +493,12 @@ export default function PosPage() {
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const discount = selectedPromo && promoMap[selectedPromo] ? promoMap[selectedPromo].calc(subtotal) : 0;
-  const taxes = Math.round((subtotal - discount) * 0.02);
-  const total = subtotal - discount + taxes;
+  const afterDiscount = subtotal - discount;
+  const taxPb1Amount = Math.round(afterDiscount * (taxPb1 / 100));
+  const taxServiceAmount = Math.round(afterDiscount * (taxService / 100));
+  const taxPpnAmount = Math.round(afterDiscount * (taxPpn / 100));
+  const taxes = taxPb1Amount + taxServiceAmount + taxPpnAmount;
+  const total = afterDiscount + taxes;
   const change = paymentMethod === "cash" && cashAmount ? Math.max(0, Number(cashAmount) - total) : 0;
 
   const updateMenuQty = (id: number, delta: number) => {
@@ -447,7 +511,9 @@ export default function PosPage() {
   const addToCart = (item: PosMenuItem) => {
     const qty = menuQuantities[item.id] || 1;
     const variant = selectedVariants[item.id] || "Regular";
-    const sugar = selectedSugar[item.id] || "Normal Sugar";
+    const sugar = item.category === "Beverage"
+      ? (selectedSugar[item.id] || "Normal")
+      : "-";
 
     setCart((prev) => {
       const existing = prev.find(
@@ -471,6 +537,7 @@ export default function PosPage() {
           qty,
           note: "",
           image: item.image,
+          category: item.category,
         },
       ];
     });
@@ -481,6 +548,21 @@ export default function PosPage() {
   const resetCart = () => {
     setCart([]);
     setEditingCartItem(null);
+  };
+
+  const resetOrderDetails = () => {
+    setCart([]);
+    setCustomerName("");
+    setIsMember(false);
+    setOrderType("");
+    setTableNumber("");
+    setSelectedPromo("");
+    setCashAmount("");
+    setEditingCartItem(null);
+    setMenuQuantities({});
+    setOrderSaveError("");
+    setActiveOrderCode("");
+    void loadBoardOrders();
   };
 
   const removeCartItem = (index: number) => {
@@ -565,7 +647,7 @@ export default function PosPage() {
           subtotal,
           discount,
           taxes,
-          serviceAmount: 0,
+          serviceAmount: taxServiceAmount,
           total,
           items: cart.map((item) => ({
             menuId: item.id,
@@ -588,6 +670,7 @@ export default function PosPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save order";
       setOrderSaveError(message);
+      toast.error(message);
       throw error;
     } finally {
       setOrderSaving(false);
@@ -618,6 +701,7 @@ export default function PosPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to finalize payment";
       setOrderSaveError(message);
+      toast.error(message);
       throw error;
     } finally {
       setOrderSaving(false);
@@ -661,6 +745,7 @@ export default function PosPage() {
       setShowMidtransQRModal(true);
     } catch (error) {
       setMidtransError(error instanceof Error ? error.message : "Midtrans payment failed");
+      toast.error(error instanceof Error ? error.message : "Midtrans payment failed");
       setShowConfirmModal(false);
       setShowMidtransQRModal(true);
     } finally {
@@ -683,13 +768,13 @@ export default function PosPage() {
               className="h-9 rounded-lg border-border bg-muted/50 pl-9 text-sm"
             />
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 text-muted-foreground">
-            <RotateCcw className="size-4" />
-            <Bell className="size-4" />
-            <div className="hidden sm:flex items-center gap-1.5 text-sm">
-              <Calendar className="size-4" />
-              <span>07 Mei 2025</span>
-            </div>
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <Calendar className="size-4" />
+            <span>
+              {currentTime.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
+              {" · "}
+              {currentTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
           </div>
         </header>
 
@@ -860,7 +945,7 @@ export default function PosPage() {
             className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
           >
             {filteredMenu.map((item) => (
-              <Card key={item.id} className="flex flex-col gap-0 overflow-hidden rounded-none border-0 py-0 shadow-none transition-transform duration-500 hover:-translate-y-0.5">
+              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", cart.some((c) => c.id === item.id) ? "border-orange-300 border-2" : "border border-border/40")}>
                 <div className="flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
                   <Avatar className="size-20 border-none after:hidden">
                     <AvatarFallback className="bg-primary/10 text-xl font-semibold tracking-wide text-primary">
@@ -873,6 +958,7 @@ export default function PosPage() {
                   <p className="text-sm font-semibold leading-tight">
                     Rp. {item.price.toLocaleString("id-ID")}
                   </p>
+                  {item.category === "Beverage" ? (
                   <div className="mt-1 flex gap-1.5">
                     <Select
                       value={selectedVariants[item.id] || "regular"}
@@ -895,14 +981,33 @@ export default function PosPage() {
                       }}
                     >
                       <SelectTrigger className="h-6 flex-1 text-xs px-2">
-                        <SelectValue placeholder="Normal Sugar" />
+                        <SelectValue placeholder="Normal" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="normal">Normal Sugar</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
                         <SelectItem value="less">Less Sugar</SelectItem>
+                        <SelectItem value="no">No Sugar</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
+                  ) : (
+                  <div className="mt-1">
+                    <Select
+                      value={selectedVariants[item.id] || "regular"}
+                      onValueChange={(val) => {
+                        if (val) setSelectedVariants((prev) => ({ ...prev, [item.id]: val }));
+                      }}
+                    >
+                      <SelectTrigger className="h-6 w-full text-xs px-2">
+                        <SelectValue placeholder="Regular" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="regular">Regular</SelectItem>
+                        <SelectItem value="extra">Extra</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  )}
                   <div className="mt-1.5 flex items-center justify-between gap-1.5">
                     <div className="flex items-center rounded-lg border">
                       <button
@@ -912,7 +1017,7 @@ export default function PosPage() {
                         <Minus className="size-3" />
                       </button>
                       <span className="w-5 text-center text-sm">
-                        {menuQuantities[item.id] || 0}
+                        {cart.filter((c) => c.id === item.id).reduce((sum, c) => sum + c.qty, 0) || menuQuantities[item.id] || 0}
                       </span>
                       <button
                         onClick={() => updateMenuQty(item.id, 1)}
@@ -1204,8 +1309,15 @@ export default function PosPage() {
           cartOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         )}
       >
-        <div className="border-b p-4">
+        <div className="border-b p-4 flex items-center justify-between">
           <h2 className="text-base font-semibold">Order Details</h2>
+          <button
+            onClick={resetOrderDetails}
+            className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-500"
+            title="Clear semua order"
+          >
+            <Trash2 className="size-4" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
@@ -1213,85 +1325,39 @@ export default function PosPage() {
           <div className="mb-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Customer Information</h3>
-              <div className="flex overflow-hidden rounded-lg border">
+              <div className="flex items-center gap-1.5">
                 <button
-                  onClick={() => { setIsMember(false); setCustomerName(""); }}
-                  className={cn(
-                    "flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    !isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
-                  )}
+                  onClick={() => setShowCustomerModal(true)}
+                  className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  title="Edit customer info"
                 >
-                  <User className="size-3" /> Guest
+                  <Pencil className="size-3.5" />
                 </button>
                 <button
-                  onClick={() => { setIsMember(true); setCustomerName(""); }}
-                  className={cn(
-                    "flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium transition-colors",
-                    isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
-                  )}
+                  onClick={() => {
+                    setCustomerName("");
+                    setIsMember(false);
+                    setOrderType("");
+                    setTableNumber("");
+                  }}
+                  className="rounded p-1 text-muted-foreground hover:bg-red-50 hover:text-red-500"
+                  title="Clear customer info"
                 >
-                  <Users className="size-3" /> Member
+                  <X className="size-3.5" />
                 </button>
               </div>
             </div>
-            <div className="space-y-3">
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  Customer name
-                </label>
-                {isMember ? (
-                  <Select value={customerName} onValueChange={(val) => { if (val) setCustomerName(val); }}>
-                    <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                      <SelectValue placeholder="Select member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {memberList.map((m) => (
-                        <SelectItem key={m.id} value={m.name}>{m.name} — {m.phone}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={customerName}
-                    onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="Enter name"
-                    className="h-9 rounded-lg text-sm"
-                  />
-                )}
+            {(customerName || orderType || tableNumber) ? (
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-medium">{customerName || "-"} {isMember ? <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0">Member</Badge> : <Badge variant="outline" className="ml-1 text-[9px] px-1 py-0">Guest</Badge>}</span>
+                <span className="text-muted-foreground">
+                  {orderType ? (orderType === "dinein" ? "Dine In" : orderType === "takeaway" ? "Take Away" : "Delivery") : "-"}
+                  {tableNumber ? ` // ${tableNumber}` : ""}
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="mb-1 block text-xs text-muted-foreground">
-                    Order Type
-                  </label>
-                  <Select value={orderType} onValueChange={(val) => { if (val) setOrderType(val); }}>
-                    <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="takeaway">Take Away</SelectItem>
-                      <SelectItem value="dinein">Dine In</SelectItem>
-                      <SelectItem value="delivery">Delivery</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-xs text-muted-foreground">
-                    Table number
-                  </label>
-                  <Select value={tableNumber} onValueChange={(val) => { if (val) setTableNumber(val); }}>
-                    <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                      <SelectValue placeholder="Select table" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {tables.filter((t) => t.status === "Available").map((table) => (
-                        <SelectItem key={table.id} value={table.name}>{table.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">Belum ada data customer. Klik ikon pensil untuk mengisi.</p>
+            )}
           </div>
 
           {/* Order Items */}
@@ -1339,11 +1405,13 @@ export default function PosPage() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Variant : {item.variant}
+                        {item.category === "Beverage" ? "Size" : "Porsi"} : {item.variant}
                       </p>
+                      {item.category === "Beverage" && (
                       <p className="text-xs text-muted-foreground">
                         Sugar : {item.sugar}
                       </p>
+                      )}
                       {item.note && (
                         <p className="text-xs italic text-amber-600">
                           Note: {item.note}
@@ -1374,10 +1442,20 @@ export default function PosPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="regular">Regular</SelectItem>
-                            <SelectItem value="large">Large</SelectItem>
+                            {item.category === "Beverage" ? (
+                              <>
+                                <SelectItem value="regular">Regular</SelectItem>
+                                <SelectItem value="large">Large</SelectItem>
+                              </>
+                            ) : (
+                              <>
+                                <SelectItem value="regular">Regular</SelectItem>
+                                <SelectItem value="extra">Extra</SelectItem>
+                              </>
+                            )}
                           </SelectContent>
                         </Select>
+                        {item.category === "Beverage" && (
                         <Select
                           value={item.sugar.toLowerCase().replace(" sugar", "")}
                           onValueChange={(val) => {
@@ -1388,10 +1466,12 @@ export default function PosPage() {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="normal">Normal Sugar</SelectItem>
+                            <SelectItem value="normal">Normal</SelectItem>
                             <SelectItem value="less">Less Sugar</SelectItem>
+                            <SelectItem value="no">No Sugar</SelectItem>
                           </SelectContent>
                         </Select>
+                        )}
                       </div>
                       <div className="mb-2">
                         <label className="mb-1 block text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -1456,20 +1536,31 @@ export default function PosPage() {
         <div className="border-t p-4">
           <h3 className="mb-3 text-sm font-semibold">Payment Details</h3>
           <div className="space-y-3">
-            <Select value={paymentMethod} onValueChange={(val) => { if (val) setPaymentMethod(val as PaymentMethod); }}>
-              <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                <div className="flex items-center gap-2">
-                  <Wallet className="size-4" />
-                  <SelectValue />
-                </div>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cash">Cash</SelectItem>
-                <SelectItem value="card">Card</SelectItem>
-                <SelectItem value="qris">QRIS</SelectItem>
-                <SelectItem value="midtrans">Payment Gateway Midtrans</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="grid grid-cols-5 gap-2">
+              <Select value={paymentMethod} onValueChange={(val) => { if (val) setPaymentMethod(val as PaymentMethod); }}>
+                <SelectTrigger className="col-span-2 h-9 w-full rounded-lg text-sm">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="size-3.5" />
+                    <SelectValue />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Cash</SelectItem>
+                  <SelectItem value="qris">QRIS</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={selectedPromo} onValueChange={(val) => { setSelectedPromo(val === "none" ? "" : val); }}>
+                <SelectTrigger className="col-span-3 h-9 w-full rounded-lg text-sm">
+                  <SelectValue placeholder="Promo code" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Tanpa Promo</SelectItem>
+                  <SelectItem value="WELCOME10">WELCOME10 - 10%</SelectItem>
+                  <SelectItem value="CASHBACK5">CASHBACK5 - Rp.5K</SelectItem>
+                  <SelectItem value="BUNDLE20">BUNDLE20 - 20%</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             {paymentMethod === "cash" && (
               <div>
@@ -1486,30 +1577,35 @@ export default function PosPage() {
               </div>
             )}
 
-            <Select value={selectedPromo} onValueChange={(val) => { if (val) setSelectedPromo(val); }}>
-              <SelectTrigger className="h-9 w-full rounded-lg text-sm">
-                <SelectValue placeholder="Select promo code" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="WELCOME10">WELCOME10 - 10% Off</SelectItem>
-                <SelectItem value="CASHBACK5">CASHBACK5 - Rp.5.000</SelectItem>
-                <SelectItem value="BUNDLE20">BUNDLE20 - 20% Off</SelectItem>
-              </SelectContent>
-            </Select>
-
             <div className="space-y-2 pt-2 text-sm">
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Sub total</span>
                 <span>Rp. {subtotal.toLocaleString("id-ID")}</span>
               </div>
+              {selectedPromo && discount > 0 && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Discount</span>
                 <span>-Rp. {discount.toLocaleString("id-ID")}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Taxes(2%)</span>
-                <span>Rp. {taxes.toLocaleString("id-ID")}</span>
+              )}
+              {(taxPb1 > 0 || taxService > 0 || taxPpn > 0) && (
+              <div className="relative group/tax">
+                <div className="flex justify-between">
+                  <span className="flex items-center gap-1 text-muted-foreground">
+                    Taxes
+                    <span className="relative inline-block">
+                      <Info className="size-3.5 text-muted-foreground cursor-help" />
+                      <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 -translate-x-1/2 whitespace-nowrap rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md opacity-0 transition-opacity group-hover/tax:opacity-100">
+                        {taxPb1 > 0 && <span className="block">PB1: {taxPb1}% = Rp. {taxPb1Amount.toLocaleString("id-ID")}</span>}
+                        {taxService > 0 && <span className="block">Service: {taxService}% = Rp. {taxServiceAmount.toLocaleString("id-ID")}</span>}
+                        {taxPpn > 0 && <span className="block">PPN: {taxPpn}% = Rp. {taxPpnAmount.toLocaleString("id-ID")}</span>}
+                      </span>
+                    </span>
+                  </span>
+                  <span>Rp. {taxes.toLocaleString("id-ID")}</span>
+                </div>
               </div>
+              )}
               {paymentMethod === "cash" && change > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>Change</span>
@@ -1546,6 +1642,111 @@ export default function PosPage() {
       </>
       )}
     </div>
+
+      {/* Customer Information Modal */}
+      {showCustomerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Customer Information</h3>
+              <button
+                onClick={() => setShowCustomerModal(false)}
+                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              {/* Guest / Member toggle */}
+              <div>
+                <label className="mb-1.5 block text-xs text-muted-foreground">Tipe Customer</label>
+                <div className="flex overflow-hidden rounded-lg border">
+                  <button
+                    onClick={() => { setIsMember(false); setCustomerName(""); }}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                      !isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    <User className="size-3.5" /> Guest
+                  </button>
+                  <button
+                    onClick={() => { setIsMember(true); setCustomerName(""); }}
+                    className={cn(
+                      "flex flex-1 items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors",
+                      isMember ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    <Users className="size-3.5" /> Member
+                  </button>
+                </div>
+              </div>
+
+              {/* Customer Name */}
+              <div>
+                <label className="mb-1.5 block text-xs text-muted-foreground">Customer Name</label>
+                {isMember ? (
+                  <Select value={customerName} onValueChange={(val) => { if (val) setCustomerName(val); }}>
+                    <SelectTrigger className="h-9 w-full rounded-lg text-sm">
+                      <SelectValue placeholder="Pilih member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {memberList.map((m) => (
+                        <SelectItem key={m.id} value={m.name}>{m.name} — {m.phone}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder="Masukkan nama customer"
+                    className="h-9 rounded-lg text-sm"
+                  />
+                )}
+              </div>
+
+              {/* Order Type */}
+              <div>
+                <label className="mb-1.5 block text-xs text-muted-foreground">Order Type</label>
+                <Select value={orderType} onValueChange={(val) => { if (val) setOrderType(val); }}>
+                  <SelectTrigger className="h-9 w-full rounded-lg text-sm">
+                    <SelectValue placeholder="Pilih tipe order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="takeaway">Take Away</SelectItem>
+                    <SelectItem value="dinein">Dine In</SelectItem>
+                    <SelectItem value="delivery">Delivery</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Table Number */}
+              <div>
+                <label className="mb-1.5 block text-xs text-muted-foreground">Table Number</label>
+                <Select value={tableNumber} onValueChange={(val) => { if (val) setTableNumber(val); }}>
+                  <SelectTrigger className="h-9 w-full rounded-lg text-sm">
+                    <SelectValue placeholder="Pilih meja" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tables.filter((t) => t.status === "Available").map((table) => (
+                      <SelectItem key={table.id} value={table.name}>{table.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Save Button */}
+              <Button
+                className="w-full"
+                onClick={() => setShowCustomerModal(false)}
+              >
+                Simpan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Payment Confirmation Modal */}
       {showConfirmModal && (
@@ -1605,31 +1806,34 @@ export default function PosPage() {
                       const savedOrderCode = await saveOrderToDb("paid", "cash");
                       setShowConfirmModal(false);
                       setReceiptOrderId(`#${savedOrderCode.slice(-4)}`);
+                      setReceiptData({
+                        customerName, orderType, tableNumber, paymentMethod, cashAmount,
+                        cart: [...cart], subtotal, discount,
+                        taxPb1, taxPb1Amount, taxService, taxServiceAmount, taxPpn, taxPpnAmount,
+                        taxes, total, change,
+                      });
                       setShowReceiptModal(true);
+                      toast.success("Pembayaran berhasil!");
+                      resetOrderDetails();
                     } catch {
                       return;
                     }
                     return;
                   }
 
+                  // QRIS → via Midtrans
                   const existingOrderCode = activeOrderCode;
                   let pendingOrderCode = existingOrderCode;
 
                   if (!pendingOrderCode) {
                     try {
-                      pendingOrderCode = await saveOrderToDb("pending", paymentMethod);
+                      pendingOrderCode = await saveOrderToDb("pending", "qris");
                     } catch {
                       return;
                     }
                   }
 
-                  if (paymentMethod === "midtrans") {
-                    await handleMidtransPayNow(pendingOrderCode);
-                    return;
-                  }
-
-                  setShowConfirmModal(false);
-                  setShowMidtransQRModal(true);
+                  await handleMidtransPayNow(pendingOrderCode);
                 }}
               >
                 {midtransLoading || orderSaving ? "Processing..." : "Pay Now"}
@@ -1712,7 +1916,15 @@ export default function PosPage() {
                     await finalizeOrderPayment(orderCode);
                     setShowMidtransQRModal(false);
                     setReceiptOrderId(`#${orderCode.slice(-4)}`);
+                    setReceiptData({
+                      customerName, orderType, tableNumber, paymentMethod, cashAmount,
+                      cart: [...cart], subtotal, discount,
+                      taxPb1, taxPb1Amount, taxService, taxServiceAmount, taxPpn, taxPpnAmount,
+                      taxes, total, change,
+                    });
                     setShowReceiptModal(true);
+                    toast.success("Pembayaran berhasil!");
+                    resetOrderDetails();
                   } catch {
                     return;
                   }
@@ -1835,7 +2047,7 @@ export default function PosPage() {
                     <span>Rp. {(item.price * item.qty).toLocaleString("id-ID")}</span>
                   </div>
                   {item.variant && (
-                    <p className="pl-2 text-[10px]">{item.variant}{item.sugar ? `, ${item.sugar}` : ""}</p>
+                    <p className="pl-2 text-[10px]">{item.variant}{item.category === "Beverage" && item.sugar && item.sugar !== "-" ? `, ${item.sugar}` : ""}</p>
                   )}
                   {item.note && (
                     <p className="pl-2 text-[10px] italic">Note: {item.note}</p>
@@ -1851,10 +2063,24 @@ export default function PosPage() {
                 <span>Discount</span>
                 <span>-Rp. {discount.toLocaleString("id-ID")}</span>
               </div>
+              {taxPb1 > 0 && (
               <div className="flex justify-between">
-                <span>Tax (2%)</span>
-                <span>Rp. {taxes.toLocaleString("id-ID")}</span>
+                <span>PB1 ({taxPb1}%)</span>
+                <span>Rp. {taxPb1Amount.toLocaleString("id-ID")}</span>
               </div>
+              )}
+              {taxService > 0 && (
+              <div className="flex justify-between">
+                <span>Service ({taxService}%)</span>
+                <span>Rp. {taxServiceAmount.toLocaleString("id-ID")}</span>
+              </div>
+              )}
+              {taxPpn > 0 && (
+              <div className="flex justify-between">
+                <span>PPN ({taxPpn}%)</span>
+                <span>Rp. {taxPpnAmount.toLocaleString("id-ID")}</span>
+              </div>
+              )}
               <p>--------------------------</p>
               <div className="flex justify-between font-bold">
                 <span>TOTAL</span>
