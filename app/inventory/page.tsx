@@ -20,6 +20,13 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type MovementType = "in" | "out" | "adjustment";
 type MovementTypeFilter = "all" | MovementType;
@@ -179,8 +186,7 @@ export default function InventoryPage() {
       p.item.toLowerCase().includes(search.toLowerCase()) ||
       p.supplier.toLowerCase().includes(search.toLowerCase()) ||
       p.id.toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => getPurchaseSequence(b.id) - getPurchaseSequence(a.id));
+    );
 
   const filteredMovements = movementsData
     .filter((m) => movementTypeFilter === "all" || m.type === movementTypeFilter)
@@ -189,8 +195,7 @@ export default function InventoryPage() {
       m.ref.toLowerCase().includes(search.toLowerCase()) ||
       m.user.toLowerCase().includes(search.toLowerCase()) ||
       m.id.toLowerCase().includes(search.toLowerCase())
-    )
-    .sort((a, b) => getMovementSequence(b.id) - getMovementSequence(a.id));
+    );
 
   const stockPagination = paginateData(filteredIngredients, stockPage, perPage);
   const purchasePagination = paginateData(filteredPurchases, purchasePage, perPage);
@@ -589,72 +594,23 @@ export default function InventoryPage() {
             <Card>
               <CardHeader className="flex flex-col gap-2 pb-2 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="text-sm font-semibold">Stock Movement History</CardTitle>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-8 rounded-xl border px-3 text-xs",
-                      movementTypeFilter === "all"
-                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
-                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
-                    )}
-                    onClick={() => {
-                      setMovementTypeFilter("all");
-                      setMovementPage(1);
-                    }}
-                  >
-                    Semua
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-8 rounded-xl border px-3 text-xs",
-                      movementTypeFilter === "in"
-                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
-                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
-                    )}
-                    onClick={() => {
-                      setMovementTypeFilter("in");
-                      setMovementPage(1);
-                    }}
-                  >
-                    Masuk
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-8 rounded-xl border px-3 text-xs",
-                      movementTypeFilter === "out"
-                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
-                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
-                    )}
-                    onClick={() => {
-                      setMovementTypeFilter("out");
-                      setMovementPage(1);
-                    }}
-                  >
-                    Keluar
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-8 rounded-xl border px-3 text-xs",
-                      movementTypeFilter === "adjustment"
-                        ? "border-[#de9a6a] bg-[#fff2e8] text-[#c46f35] hover:bg-[#ffecde]"
-                        : "border-[#e2c8b7] bg-[#f8f3ef] text-[#9c6a4f] hover:bg-[#f2e7e0]"
-                    )}
-                    onClick={() => {
-                      setMovementTypeFilter("adjustment");
-                      setMovementPage(1);
-                    }}
-                  >
-                    Adjustment
-                  </Button>
-                </div>
+                <Select
+                  value={movementTypeFilter}
+                  onValueChange={(val) => {
+                    setMovementTypeFilter(val as MovementTypeFilter);
+                    setMovementPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[150px] rounded-lg text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Semua Tipe</SelectItem>
+                    <SelectItem value="in">Masuk</SelectItem>
+                    <SelectItem value="out">Keluar</SelectItem>
+                    <SelectItem value="adjustment">Adjustment</SelectItem>
+                  </SelectContent>
+                </Select>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">

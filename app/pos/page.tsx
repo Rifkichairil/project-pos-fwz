@@ -47,20 +47,21 @@ interface CartItem {
   category: string;
 }
 
-type KanbanStatus = "Waiting" | "Ready" | "Done" | "Cancel";
+type KanbanStatus = "Queue" | "Process" | "Ready" | "Served" | "Done";
 
 interface BoardOrder {
   id: string;
   orderCode: string;
   name: string;
   type: string;
+  tableName?: string;
   status: KanbanStatus;
   time: string;
   orderAt?: string;
   items: number;
   total: number;
   handledBy?: string;
-  menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }[];
+  menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string; refunded?: boolean }[];
 }
 
 type PosOrdersApiResponse = {
@@ -93,6 +94,8 @@ type PosMenuItem = {
   price: number;
   category: string;
   image: string;
+  lowStock: boolean;
+  lowStockItems: string[];
 };
 
 type MenuApiResponse = {
@@ -101,6 +104,8 @@ type MenuApiResponse = {
     name: string;
     category: string;
     price: number;
+    lowStock?: boolean;
+    lowStockItems?: string[];
   }>;
 };
 
@@ -215,6 +220,7 @@ export default function PosPage() {
   const [taxPb1, setTaxPb1] = useState(0);
   const [taxService, setTaxService] = useState(0);
   const [taxPpn, setTaxPpn] = useState(0);
+  const [storeWifiPassword, setStoreWifiPassword] = useState("");
 
   const cashierName = "Jennie Doe";
 
@@ -229,6 +235,7 @@ export default function PosPage() {
       const response = await fetch("/api/settings", { cache: "no-store" });
       if (!response.ok) return;
       const data = await response.json() as {
+        wifiPassword: string;
         pb1Enabled: boolean;
         pb1Rate: number;
         serviceEnabled: boolean;
@@ -239,6 +246,7 @@ export default function PosPage() {
       setTaxPb1(data.pb1Enabled ? data.pb1Rate : 0);
       setTaxService(data.serviceEnabled ? data.serviceRate : 0);
       setTaxPpn(data.ppnEnabled ? data.ppnRate : 0);
+      setStoreWifiPassword(data.wifiPassword || "");
     } catch {
       // fallback to 0
     }
@@ -258,6 +266,8 @@ export default function PosPage() {
         category: product.category,
         price: product.price,
         image: fallbackMenuImage,
+        lowStock: product.lowStock || false,
+        lowStockItems: product.lowStockItems || [],
       }));
 
       setMenuItems(mapped);
@@ -339,12 +349,38 @@ export default function PosPage() {
       if (!response.ok) {
         throw new Error("Failed to update order status");
       }
+
+      // Release table when order moves to Done
+      if (nextStatus === "Done" && current.tableName) {
+        const matchedTable = tables.find((t) => t.name === current.tableName);
+        if (matchedTable) {
+          void fetch(`/api/tables/${matchedTable.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "available" }),
+          });
+          setTables((prev) => prev.map((t) => t.id === matchedTable.id ? { ...t, status: "Available" } : t));
+        }
+      }
+
+      // Re-occupy table when order moves away from Done
+      if (current.status === "Done" && nextStatus !== "Done" && current.tableName) {
+        const matchedTable = tables.find((t) => t.name === current.tableName);
+        if (matchedTable) {
+          void fetch(`/api/tables/${matchedTable.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "occupied" }),
+          });
+          setTables((prev) => prev.map((t) => t.id === matchedTable.id ? { ...t, status: "Occupied" } : t));
+        }
+      }
     } catch {
       void loadBoardOrders(false);
     } finally {
       setBoardStatusSaving(null);
     }
-  }, [boardOrders, loadBoardOrders]);
+  }, [boardOrders, loadBoardOrders, tables]);
 
   const loadTables = useCallback(async (showLoader = true) => {
     if (showLoader) {
@@ -565,6 +601,28 @@ export default function PosPage() {
     void loadBoardOrders();
   };
 
+  const refundItem = async (orderCode: string, itemName: string, itemIndex: number) => {
+    try {
+      const response = await fetch("/api/pos/refund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderCode, itemName, itemIndex }),
+      });
+
+      const data = await response.json() as { success?: boolean; error?: string };
+
+      if (!response.ok) {
+        toast.error(data.error || "Gagal refund item");
+        return;
+      }
+
+      toast.success(`${itemName} berhasil di-refund`);
+      void loadBoardOrders(false);
+    } catch {
+      toast.error("Gagal memproses refund");
+    }
+  };
+
   const removeCartItem = (index: number) => {
     setCart((prev) => prev.filter((_, i) => i !== index));
     if (editingCartItem === index) setEditingCartItem(null);
@@ -647,7 +705,9 @@ export default function PosPage() {
           subtotal,
           discount,
           taxes,
+          pb1Amount: taxPb1Amount,
           serviceAmount: taxServiceAmount,
+          ppnAmount: taxPpnAmount,
           total,
           items: cart.map((item) => ({
             menuId: item.id,
@@ -664,6 +724,18 @@ export default function PosPage() {
       const data = (await response.json()) as { error?: string; orderCode?: string };
       if (!response.ok) {
         throw new Error(data.error || "Failed to save order");
+      }
+
+      // Update table status to occupied when order is paid
+      if (paymentStatus === "paid" && tableNumber) {
+        const selectedTable = tables.find((t) => t.name === tableNumber);
+        if (selectedTable) {
+          void fetch(`/api/tables/${selectedTable.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status: "occupied" }),
+          });
+        }
       }
 
       return data.orderCode || orderCode;
@@ -874,13 +946,15 @@ export default function PosPage() {
                           variant="outline"
                           className={cn(
                             "rounded-md",
-                            order.status === "Waiting"
+                            order.status === "Queue"
                               ? "border-amber-200 bg-amber-50 text-amber-600"
-                              : order.status === "Ready"
-                                ? "border-emerald-200 bg-emerald-50 text-emerald-600"
-                                : order.status === "Done"
-                                  ? "border-blue-200 bg-blue-50 text-blue-600"
-                                  : "border-red-200 bg-red-50 text-red-600"
+                              : order.status === "Process"
+                                ? "border-blue-200 bg-blue-50 text-blue-600"
+                                : order.status === "Ready"
+                                  ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+                                  : order.status === "Served"
+                                    ? "border-purple-200 bg-purple-50 text-purple-600"
+                                    : "border-green-200 bg-green-50 text-green-600"
                           )}
                         >
                           {order.status}
@@ -946,7 +1020,19 @@ export default function PosPage() {
           >
             {filteredMenu.map((item) => (
               <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", cart.some((c) => c.id === item.id) ? "border-orange-300 border-2" : "border border-border/40")}>
-                <div className="flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
+                <div className="relative flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
+                  {item.lowStock && (
+                    <div className="absolute top-2 right-2 group/lowstock">
+                      <Badge variant="outline" className="cursor-help border-red-200 bg-red-50 text-[9px] text-red-600 px-1.5 py-0.5">
+                        Stok Menipis
+                      </Badge>
+                      <span className="pointer-events-none absolute top-full right-0 z-50 mt-1 whitespace-nowrap rounded-lg border bg-popover px-2.5 py-1.5 text-[10px] text-popover-foreground shadow-md opacity-0 transition-opacity group-hover/lowstock:opacity-100">
+                        {item.lowStockItems.map((name, i) => (
+                          <span key={i} className="block">{name}</span>
+                        ))}
+                      </span>
+                    </div>
+                  )}
                   <Avatar className="size-20 border-none after:hidden">
                     <AvatarFallback className="bg-primary/10 text-xl font-semibold tracking-wide text-primary">
                       {getMenuInitials(item.name)}
@@ -1103,10 +1189,11 @@ export default function PosPage() {
               ) : (
                 <div className="flex gap-4 overflow-x-auto pb-2">
                   {[
-                    { key: "Waiting", label: "Waiting", color: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
+                    { key: "Queue", label: "Queue", color: "bg-amber-50 text-amber-700 border-amber-200", dot: "bg-amber-500" },
+                    { key: "Process", label: "Process", color: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500" },
                     { key: "Ready", label: "Ready", color: "bg-green-50 text-green-700 border-green-200", dot: "bg-green-500" },
-                    { key: "Done", label: "Done", color: "bg-blue-50 text-blue-700 border-blue-200", dot: "bg-blue-500" },
-                    { key: "Cancel", label: "Cancel", color: "bg-red-50 text-red-700 border-red-200", dot: "bg-red-500" },
+                    { key: "Served", label: "Served", color: "bg-purple-50 text-purple-700 border-purple-200", dot: "bg-purple-500" },
+                    { key: "Done", label: "Done", color: "bg-emerald-50 text-emerald-700 border-emerald-200", dot: "bg-emerald-500" },
                   ].map((col) => {
                     const orders = boardOrders.filter((o) => o.status === (col.key as KanbanStatus));
                     return (
@@ -1165,9 +1252,9 @@ export default function PosPage() {
                                     <p className="mb-2 text-xs font-semibold">Ordered Items:</p>
                                     <div className="space-y-2">
                                       {order.menuItems?.map((m, idx) => (
-                                        <div key={idx} className="flex items-start justify-between text-xs">
+                                        <div key={idx} className={cn("flex items-start justify-between text-xs", m.refunded && "opacity-50")}>
                                           <div className="flex flex-col gap-0.5">
-                                            <span className="font-medium">{m.name} <span className="text-muted-foreground">x{m.qty}</span></span>
+                                            <span className={cn("font-medium", m.refunded && "line-through")}>{m.name} <span className="text-muted-foreground">x{m.qty}</span></span>
                                             {m.variant && (
                                               <span className="text-muted-foreground">({m.variant}{m.sugar ? `, ${m.sugar}` : ""})</span>
                                             )}
@@ -1176,8 +1263,25 @@ export default function PosPage() {
                                                 Note: {m.note}
                                               </span>
                                             )}
+                                            {m.refunded && (
+                                              <Badge variant="outline" className="w-fit border-red-200 bg-red-50 text-red-600 text-[9px] px-1 py-0">Refunded</Badge>
+                                            )}
                                           </div>
-                                          <span className="shrink-0 pl-2">Rp. {(m.price * m.qty).toLocaleString("id-ID")}</span>
+                                          <div className="flex items-center gap-1.5 shrink-0 pl-2">
+                                            <span className={cn(m.refunded && "line-through")}>Rp. {(m.price * m.qty).toLocaleString("id-ID")}</span>
+                                            {!m.refunded && order.status === "Done" && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void refundItem(order.orderCode, m.name, idx);
+                                                }}
+                                                className="rounded p-0.5 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                                title="Refund item ini"
+                                              >
+                                                <RotateCcw className="size-3" />
+                                              </button>
+                                            )}
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
@@ -1627,7 +1731,7 @@ export default function PosPage() {
         <div className="border-t p-4">
           <Button
             className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            disabled={!customerName.trim() || !orderType || !tableNumber || cart.length === 0}
+            disabled={!customerName.trim() || !orderType || !tableNumber || cart.length === 0 || (paymentMethod === "cash" && (!cashAmount || Number(cashAmount) < total))}
             onClick={() => {
               setMidtransError("");
               setMidtransRedirectUrl("");
@@ -1994,7 +2098,7 @@ export default function PosPage() {
       )}
 
       {/* Receipt Preview Modal */}
-      {showReceiptModal && (
+      {showReceiptModal && receiptData && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
             <h3 className="mb-4 text-lg font-semibold">Receipt Preview</h3>
@@ -2019,28 +2123,28 @@ export default function PosPage() {
               </div>
               <div className="flex justify-between">
                 <span>Customer</span>
-                <span>{customerName}</span>
+                <span>{receiptData.customerName}</span>
               </div>
               <div className="flex justify-between">
                 <span>Type</span>
-                <span className="capitalize">{orderType}</span>
+                <span className="capitalize">{receiptData.orderType}</span>
               </div>
               <div className="flex justify-between">
                 <span>Table</span>
-                <span>{tableNumber}</span>
+                <span>{receiptData.tableNumber}</span>
               </div>
               <div className="flex justify-between">
                 <span>Payment</span>
-                <span className="capitalize">{paymentMethod}</span>
+                <span className="capitalize">{receiptData.paymentMethod}</span>
               </div>
-              {(paymentMethod === "card" || paymentMethod === "qris" || paymentMethod === "midtrans") && (
+              {(receiptData.paymentMethod === "qris") && (
                 <div className="flex justify-between">
                   <span>PG</span>
                   <span>Midtrans</span>
                 </div>
               )}
               <p>--------------------------</p>
-              {cart.map((item, i) => (
+              {receiptData.cart.map((item, i) => (
                 <div key={i}>
                   <div className="flex justify-between">
                     <span>{item.name} x{item.qty}</span>
@@ -2057,54 +2161,59 @@ export default function PosPage() {
               <p>--------------------------</p>
               <div className="flex justify-between">
                 <span>Subtotal</span>
-                <span>Rp. {subtotal.toLocaleString("id-ID")}</span>
+                <span>Rp. {receiptData.subtotal.toLocaleString("id-ID")}</span>
               </div>
+              {receiptData.discount > 0 && (
               <div className="flex justify-between">
                 <span>Discount</span>
-                <span>-Rp. {discount.toLocaleString("id-ID")}</span>
-              </div>
-              {taxPb1 > 0 && (
-              <div className="flex justify-between">
-                <span>PB1 ({taxPb1}%)</span>
-                <span>Rp. {taxPb1Amount.toLocaleString("id-ID")}</span>
+                <span>-Rp. {receiptData.discount.toLocaleString("id-ID")}</span>
               </div>
               )}
-              {taxService > 0 && (
+              {receiptData.taxPb1 > 0 && (
               <div className="flex justify-between">
-                <span>Service ({taxService}%)</span>
-                <span>Rp. {taxServiceAmount.toLocaleString("id-ID")}</span>
+                <span>PB1 ({receiptData.taxPb1}%)</span>
+                <span>Rp. {receiptData.taxPb1Amount.toLocaleString("id-ID")}</span>
               </div>
               )}
-              {taxPpn > 0 && (
+              {receiptData.taxService > 0 && (
               <div className="flex justify-between">
-                <span>PPN ({taxPpn}%)</span>
-                <span>Rp. {taxPpnAmount.toLocaleString("id-ID")}</span>
+                <span>Service ({receiptData.taxService}%)</span>
+                <span>Rp. {receiptData.taxServiceAmount.toLocaleString("id-ID")}</span>
+              </div>
+              )}
+              {receiptData.taxPpn > 0 && (
+              <div className="flex justify-between">
+                <span>PPN ({receiptData.taxPpn}%)</span>
+                <span>Rp. {receiptData.taxPpnAmount.toLocaleString("id-ID")}</span>
               </div>
               )}
               <p>--------------------------</p>
               <div className="flex justify-between font-bold">
                 <span>TOTAL</span>
-                <span>Rp. {total.toLocaleString("id-ID")}</span>
+                <span>Rp. {receiptData.total.toLocaleString("id-ID")}</span>
               </div>
-              {paymentMethod === "cash" && (
+              {receiptData.paymentMethod === "cash" && (
                 <>
                   <div className="flex justify-between">
                     <span>Cash</span>
-                    <span>Rp. {Number(cashAmount).toLocaleString("id-ID")}</span>
+                    <span>Rp. {Number(receiptData.cashAmount).toLocaleString("id-ID")}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Change</span>
-                    <span>Rp. {change.toLocaleString("id-ID")}</span>
+                    <span>Rp. {receiptData.change.toLocaleString("id-ID")}</span>
                   </div>
                 </>
               )}
               <p className="mt-2 text-center">*** Thank you ***</p>
+              {storeWifiPassword && (
+                <p className="mt-1 text-center">WiFi Pass: {storeWifiPassword}</p>
+              )}
             </div>
             <div className="flex gap-2">
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => setShowReceiptModal(false)}
+                onClick={() => { setShowReceiptModal(false); setReceiptData(null); }}
               >
                 Close
               </Button>
@@ -2112,18 +2221,7 @@ export default function PosPage() {
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
                 onClick={() => {
                   setShowReceiptModal(false);
-                  setCart([]);
-                  setCustomerName("");
-                  setOrderType("");
-                  setTableNumber("");
-                  setSelectedPromo("");
-                  setCashAmount("");
-                  setEditingCartItem(null);
-                  setMenuQuantities({});
-                  setOrderSaveError("");
-                  setActiveOrderCode("");
-                  setBoardLoading(true);
-                  void loadBoardOrders();
+                  setReceiptData(null);
                 }}
               >
                 Print & Save

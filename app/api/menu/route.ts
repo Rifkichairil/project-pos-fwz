@@ -18,7 +18,7 @@ type PgError = Error & { code?: string };
 
 export async function GET() {
   try {
-    const [recipesResult, productsResult, ingredientsResult] = await Promise.all([
+    const [recipesResult, productsResult, ingredientsResult, lowStockMenusResult] = await Promise.all([
       db.query<{
         id: number;
         name: string;
@@ -82,7 +82,26 @@ export async function GET() {
         WHERE is_active = TRUE
         ORDER BY name
       `),
+      db.query<{ menu_id: number; ingredient_name: string }>(`
+        SELECT DISTINCT mi.menu_id, i.name AS ingredient_name
+        FROM menu_ingredients mi
+        JOIN ingredients i ON i.id = mi.ingredient_id
+        WHERE i.is_active = TRUE
+          AND i.stock <= (CASE
+            WHEN i.base_unit = 'pcs' THEN 100
+            WHEN i.base_unit IN ('kg', 'liter') THEN 20
+            ELSE 1000
+          END)
+      `),
     ]);
+
+    const lowStockMenuMap = new Map<number, string[]>();
+    for (const row of lowStockMenusResult.rows) {
+      if (!lowStockMenuMap.has(row.menu_id)) {
+        lowStockMenuMap.set(row.menu_id, []);
+      }
+      lowStockMenuMap.get(row.menu_id)!.push(row.ingredient_name);
+    }
 
     return NextResponse.json({
       recipes: recipesResult.rows,
@@ -92,6 +111,8 @@ export async function GET() {
         category: row.category,
         hpp: Number(row.hpp),
         price: Number(row.selling_price),
+        lowStock: lowStockMenuMap.has(row.id),
+        lowStockItems: lowStockMenuMap.get(row.id) || [],
       })),
       ingredients: ingredientsResult.rows.map((row) => ({
         name: row.name,

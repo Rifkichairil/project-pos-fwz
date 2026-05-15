@@ -25,12 +25,14 @@ type PosOrderPayload = {
   subtotal: number;
   discount: number;
   taxes: number;
+  pb1Amount?: number;
   serviceAmount: number;
+  ppnAmount?: number;
   total: number;
   items: PosOrderItemPayload[];
 };
 
-type KanbanStatus = "Waiting" | "Ready" | "Done" | "Cancel";
+type KanbanStatus = "Queue" | "Process" | "Ready" | "Served" | "Done";
 
 type PosOrderBoardRow = {
   order_code: string;
@@ -55,31 +57,32 @@ type PosOrderStatusPatchPayload = {
 const toKanbanStatus = (status: PosOrderBoardRow["status"], kanbanNote: string | null): KanbanStatus => {
   if (kanbanNote && kanbanNote.startsWith("kanban:")) {
     const mapped = kanbanNote.slice(7) as KanbanStatus;
-    if (mapped === "Waiting" || mapped === "Ready" || mapped === "Done" || mapped === "Cancel") {
+    if (mapped === "Queue" || mapped === "Process" || mapped === "Ready" || mapped === "Served" || mapped === "Done") {
       return mapped;
     }
   }
 
-  if (status === "cancelled") return "Cancel";
-  if (status === "paid") return "Done";
-  return "Waiting";
+  if (status === "cancelled" || status === "refunded") return "Done";
+  if (status === "paid") return "Served";
+  return "Queue";
 };
 
-const toDbStatus = (status: KanbanStatus): "open" | "paid" | "cancelled" => {
-  if (status === "Done") return "paid";
-  if (status === "Cancel") return "cancelled";
+const toDbStatus = (status: KanbanStatus): "open" | "paid" | "cancelled" | "refunded" => {
+  if (status === "Served" || status === "Done") return "paid";
   return "open";
 };
 
 const parseOrderMeta = (notes: string | null) => {
-  if (!notes) return { orderType: "Takeaway", customerName: "Guest" };
+  if (!notes) return { orderType: "Takeaway", customerName: "Guest", tableName: "" };
 
   const type = notes.match(/order_type=([^;]+)/)?.[1]?.trim();
   const customer = notes.match(/customer=([^;]+)/)?.[1]?.trim();
+  const table = notes.match(/table=([^;]+)/)?.[1]?.trim();
 
   return {
     orderType: type ? type.charAt(0).toUpperCase() + type.slice(1) : "Takeaway",
     customerName: customer || "Guest",
+    tableName: table || "",
   };
 };
 
@@ -147,7 +150,7 @@ export async function GET(request: Request) {
           LIMIT 1
         ) kanban ON TRUE
         WHERE ${dateCondition}
-        ORDER BY COALESCE(kanban.kanban_changed_at, so.order_at) DESC, so.order_at DESC
+        ORDER BY so.order_at DESC
         LIMIT $1
       `,
       params
@@ -162,6 +165,7 @@ export async function GET(request: Request) {
         orderCode: row.order_code,
         name: meta.customerName,
         type: meta.orderType,
+        tableName: meta.tableName,
         status: kanbanStatus,
         time: new Date(row.order_at).toLocaleString("id-ID", {
           day: "2-digit",
@@ -179,7 +183,8 @@ export async function GET(request: Request) {
           price: Number(item.price),
           variant: item.variant,
           sugar: item.sugar,
-          note: item.note,
+          note: item.note ? item.note.replace(" [REFUNDED]", "").replace("[REFUNDED]", "") : item.note,
+          refunded: !!(item.note && item.note.includes("[REFUNDED]")),
         })),
       };
     });
@@ -214,7 +219,7 @@ export async function PATCH(request: Request) {
     }
 
     if (body.status) {
-      if (!["Waiting", "Ready", "Done", "Cancel"].includes(body.status)) {
+      if (!["Queue", "Process", "Ready", "Served", "Done"].includes(body.status)) {
         await client.query("ROLLBACK");
         return NextResponse.json({ error: "Invalid kanban status" }, { status: 400 });
       }
@@ -335,9 +340,12 @@ export async function POST(request: Request) {
           discount_amount,
           tax_amount,
           service_amount,
+          pb1_amount,
+          service_charge_amount,
+          ppn_amount,
           total_amount,
           notes
-        ) VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10)
+        ) VALUES ($1, $2, NOW(), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING id
       `,
       [
@@ -349,6 +357,9 @@ export async function POST(request: Request) {
         body.discount,
         body.taxes,
         body.serviceAmount,
+        body.pb1Amount || 0,
+        body.serviceAmount || 0,
+        body.ppnAmount || 0,
         body.total,
         `order_type=${body.orderType}; table=${body.tableNumber}; customer=${body.customerName}`,
       ]
@@ -431,8 +442,77 @@ export async function POST(request: Request) {
           note
         ) VALUES ($1, $2, $3, $4, $5)
       `,
-      [salesOrderId, null, orderStatus, body.cashierName, "kanban:Waiting"]
+      [salesOrderId, null, orderStatus, body.cashierName, "kanban:Queue"]
     );
+
+    // Deduct ingredient stock based on menu recipes
+    const orderedMenuIds = body.items
+      .map(item => item.menuId && item.menuId > 0 ? item.menuId : menuMap.get(item.name.toLowerCase()) || null)
+      .filter((id): id is number => id !== null);
+
+    if (orderedMenuIds.length > 0) {
+      const recipeResult = await client.query<{
+        menu_id: number;
+        ingredient_id: number;
+        ingredient_name: string;
+        recipe_qty: string;
+        recipe_unit: string;
+      }>(`
+        SELECT
+          mi.menu_id,
+          mi.ingredient_id,
+          i.name AS ingredient_name,
+          mi.qty::text AS recipe_qty,
+          mi.unit AS recipe_unit
+        FROM menu_ingredients mi
+        JOIN ingredients i ON i.id = mi.ingredient_id
+        WHERE mi.menu_id = ANY($1::bigint[])
+      `, [orderedMenuIds]);
+
+      // Group recipes by menu_id
+      const recipesByMenu = new Map<number, Array<{ ingredientId: number; name: string; qty: number; unit: string }>>();
+      for (const row of recipeResult.rows) {
+        if (!recipesByMenu.has(row.menu_id)) {
+          recipesByMenu.set(row.menu_id, []);
+        }
+        recipesByMenu.get(row.menu_id)!.push({
+          ingredientId: row.ingredient_id,
+          name: row.ingredient_name,
+          qty: Number(row.recipe_qty),
+          unit: row.recipe_unit,
+        });
+      }
+
+      // For each ordered item, deduct stock and record movement
+      let movementSeq = 0;
+      for (const item of body.items) {
+        const menuId = item.menuId && item.menuId > 0 ? item.menuId : menuMap.get(item.name.toLowerCase()) || null;
+        if (!menuId) continue;
+
+        const ingredients = recipesByMenu.get(menuId);
+        if (!ingredients) continue;
+
+        for (const ing of ingredients) {
+          const totalQty = ing.qty * item.qty;
+          movementSeq++;
+
+          // Deduct stock
+          await client.query(
+            `UPDATE ingredients SET stock = GREATEST(0, stock - $1), updated_at = NOW() WHERE id = $2`,
+            [totalQty, ing.ingredientId]
+          );
+
+          // Record stock movement
+          const mvCode = `MV-${body.orderCode}-${String(movementSeq).padStart(3, "0")}`;
+          await client.query(
+            `INSERT INTO stock_movements (movement_code, movement_date, ingredient_id, movement_type, qty, unit, reference_type, reference_code, notes, created_by)
+             VALUES ($1, CURRENT_DATE, $2, 'out', $3, $4, 'sales_order', $5, $6, $7)
+             ON CONFLICT (movement_code) DO NOTHING`,
+            [mvCode, ing.ingredientId, totalQty, ing.unit, body.orderCode, `Pemakaian order ${body.orderCode}`, body.cashierName]
+          );
+        }
+      }
+    }
 
     await client.query("COMMIT");
 

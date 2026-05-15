@@ -10,12 +10,18 @@ type TransactionRow = {
   order_at: string;
   order_status: "draft" | "open" | "paid" | "cancelled" | "refunded";
   total_amount: string;
+  subtotal: string;
+  discount_amount: string;
+  tax_amount: string;
+  service_amount: string;
   notes: string | null;
   cashier_name: string;
   items_count: number;
   payment_method: "cash" | "qris" | "card" | "e_wallet" | "transfer" | null;
   payment_status: "pending" | "paid" | "failed" | "voided" | "refunded" | null;
   kanban_note: string | null;
+  menu_items: Array<{ name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }>;
+  refund_amount: string;
 };
 
 function parseOrderMeta(notes: string | null) {
@@ -48,8 +54,13 @@ function mapPaymentStatus(status: TransactionRow["payment_status"]): PaymentStat
 function mapOrderStatus(orderStatus: TransactionRow["order_status"], kanbanNote: string | null): OrderStatusUi {
   if (kanbanNote?.startsWith("kanban:")) {
     const status = kanbanNote.slice(7);
-    if (status === "Waiting") return "Pending";
+    if (status === "Queue") return "Pending";
+    if (status === "Process") return "Preparing";
     if (status === "Ready") return "Ready";
+    if (status === "Served") return "Completed";
+    if (status === "Refund") return "Cancelled";
+    // Legacy support
+    if (status === "Waiting") return "Pending";
     if (status === "Done") return "Completed";
     if (status === "Cancel") return "Cancelled";
   }
@@ -73,15 +84,37 @@ export async function GET(request: Request) {
           so.order_at::text,
           so.status AS order_status,
           so.total_amount::text,
+          so.subtotal::text,
+          so.discount_amount::text,
+          so.tax_amount::text,
+          so.service_amount::text,
           so.notes,
           so.cashier_name,
           COALESCE(items.items_count, 0)::int AS items_count,
+          COALESCE(items.menu_items, '[]'::json) AS menu_items,
+          COALESCE(items.refund_amount, 0)::text AS refund_amount,
           pay.method AS payment_method,
           pay.status AS payment_status,
           kanban.kanban_note
         FROM sales_orders so
         LEFT JOIN LATERAL (
-          SELECT COALESCE(SUM(soi.qty), 0) AS items_count
+          SELECT
+            COALESCE(SUM(soi.qty), 0) AS items_count,
+            COALESCE(
+              JSON_AGG(
+                JSON_BUILD_OBJECT(
+                  'name', soi.menu_name_snapshot,
+                  'qty', soi.qty,
+                  'price', soi.unit_price,
+                  'variant', soi.variant_name,
+                  'sugar', soi.sugar_level,
+                  'note', soi.note
+                )
+                ORDER BY soi.id
+              ),
+              '[]'::json
+            ) AS menu_items,
+            COALESCE(SUM(CASE WHEN soi.note LIKE '%[REFUNDED]%' THEN soi.line_total ELSE 0 END), 0) AS refund_amount
           FROM sales_order_items soi
           WHERE soi.sales_order_id = so.id
         ) items ON TRUE
@@ -126,10 +159,23 @@ export async function GET(request: Request) {
         type,
         items: Number(row.items_count),
         total: Number(row.total_amount),
+        subtotal: Number(row.subtotal),
+        discount: Number(row.discount_amount),
+        tax: Number(row.tax_amount),
+        service: Number(row.service_amount),
         handledBy: row.cashier_name,
         method: mapMethod(row.payment_method),
         paymentStatus: mapPaymentStatus(row.payment_status),
         orderStatus: mapOrderStatus(row.order_status, row.kanban_note),
+        menuItems: (row.menu_items || []).map((item) => ({
+          name: item.name,
+          qty: Number(item.qty),
+          price: Number(item.price),
+          variant: item.variant || null,
+          sugar: item.sugar || null,
+          note: item.note || null,
+        })),
+        refundAmount: Number(row.refund_amount || 0),
       };
     });
 
