@@ -55,6 +55,7 @@ interface BoardOrder {
   orderAt?: string;
   items: number;
   total: number;
+  handledBy?: string;
   menuItems?: { name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }[];
 }
 
@@ -185,6 +186,8 @@ export default function PosPage() {
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableCapacity, setNewTableCapacity] = useState("");
+
+  const cashierName = "Jennie Doe";
 
   const promoMap: Record<string, { label: string; calc: (sub: number) => number }> = {
     WELCOME10: { label: "WELCOME10", calc: (sub) => Math.round(sub * 0.1) },
@@ -554,7 +557,7 @@ export default function PosPage() {
           memberName: isMember ? customerName : undefined,
           orderType,
           tableNumber,
-          cashierName: "Jennie Doe",
+          cashierName,
           paymentMethod: payment,
           paymentStatus,
           provider: payment === "midtrans" ? "midtrans" : undefined,
@@ -591,8 +594,38 @@ export default function PosPage() {
     }
   };
 
-  const handleMidtransPayNow = async () => {
-    const orderId = activeOrderCode || createOrderCode();
+  const finalizeOrderPayment = async (orderCode: string) => {
+    setOrderSaving(true);
+    setOrderSaveError("");
+
+    try {
+      const response = await fetch("/api/pos", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderCode,
+          paymentStatus: "paid",
+          handledBy: cashierName,
+        }),
+      });
+
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to finalize payment");
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to finalize payment";
+      setOrderSaveError(message);
+      throw error;
+    } finally {
+      setOrderSaving(false);
+    }
+  };
+
+  const handleMidtransPayNow = async (orderIdOverride?: string) => {
+    const orderId = orderIdOverride || activeOrderCode || createOrderCode();
     setActiveOrderCode(orderId);
     setMidtransLoading(true);
     setMidtransError("");
@@ -642,7 +675,7 @@ export default function PosPage() {
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Header */}
         <header className="flex h-16 items-center gap-3 border-b px-4 sm:gap-4 sm:px-6">
-          <h1 className="text-base font-semibold sm:text-lg">Welcome, Jennie Doe</h1>
+          <h1 className="text-base font-semibold sm:text-lg">Welcome, {cashierName}</h1>
           <div className="relative ml-auto hidden sm:flex w-64 items-center">
             <Search className="absolute left-3 size-4 text-muted-foreground" />
             <Input
@@ -770,6 +803,7 @@ export default function PosPage() {
                       </div>
                       <p className="text-sm font-medium">{order.name}</p>
                       <p className="text-xs text-muted-foreground">{order.time}</p>
+                      <p className="text-xs text-muted-foreground">Handled by: {order.handledBy || "-"}</p>
                       <p className="mt-2 text-xs text-muted-foreground">{order.items} Items</p>
                       <p className="mt-1 text-xs text-muted-foreground">#{order.orderCode.slice(-4)}</p>
                     </CardContent>
@@ -1010,6 +1044,7 @@ export default function PosPage() {
                                 </div>
                                 <p className="text-sm font-medium">{order.name}</p>
                                 <p className="text-xs text-muted-foreground">{order.type}</p>
+                                <p className="text-xs text-muted-foreground">Handled by: {order.handledBy || "-"}</p>
                                 <div className="mt-2 flex items-center justify-between">
                                   <span className="text-xs text-muted-foreground">{order.items} items</span>
                                   <span className="text-xs font-semibold">Rp. {order.total.toLocaleString("id-ID")}</span>
@@ -1577,8 +1612,19 @@ export default function PosPage() {
                     return;
                   }
 
+                  const existingOrderCode = activeOrderCode;
+                  let pendingOrderCode = existingOrderCode;
+
+                  if (!pendingOrderCode) {
+                    try {
+                      pendingOrderCode = await saveOrderToDb("pending", paymentMethod);
+                    } catch {
+                      return;
+                    }
+                  }
+
                   if (paymentMethod === "midtrans") {
-                    await handleMidtransPayNow();
+                    await handleMidtransPayNow(pendingOrderCode);
                     return;
                   }
 
@@ -1648,7 +1694,6 @@ export default function PosPage() {
                   setShowMidtransQRModal(false);
                   setMidtransRedirectUrl("");
                   setMidtransError("");
-                  setActiveOrderCode("");
                 }}
               >
                 Cancel
@@ -1657,10 +1702,16 @@ export default function PosPage() {
                 className="flex-1 bg-blue-600 hover:bg-blue-700"
                 disabled={orderSaving}
                 onClick={async () => {
+                  const orderCode = activeOrderCode;
+                  if (!orderCode) {
+                    setOrderSaveError("Order belum tersimpan");
+                    return;
+                  }
+
                   try {
-                    const savedOrderCode = await saveOrderToDb("paid", paymentMethod);
+                    await finalizeOrderPayment(orderCode);
                     setShowMidtransQRModal(false);
-                    setReceiptOrderId(`#${savedOrderCode.slice(-4)}`);
+                    setReceiptOrderId(`#${orderCode.slice(-4)}`);
                     setShowReceiptModal(true);
                   } catch {
                     return;

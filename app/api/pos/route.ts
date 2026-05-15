@@ -38,6 +38,7 @@ type PosOrderBoardRow = {
   order_at: string;
   total_amount: string;
   notes: string | null;
+  cashier_name: string;
   items_count: number;
   menu_items: Array<{ name: string; qty: number; price: number; variant?: string; sugar?: string; note?: string }>;
   kanban_note: string | null;
@@ -46,7 +47,9 @@ type PosOrderBoardRow = {
 
 type PosOrderStatusPatchPayload = {
   orderCode: string;
-  status: KanbanStatus;
+  status?: KanbanStatus;
+  paymentStatus?: "pending" | "paid" | "failed" | "voided" | "refunded";
+  handledBy?: string;
 };
 
 const toKanbanStatus = (status: PosOrderBoardRow["status"], kanbanNote: string | null): KanbanStatus => {
@@ -109,6 +112,7 @@ export async function GET(request: Request) {
           so.order_at::text,
           so.total_amount::text,
           so.notes,
+          so.cashier_name,
           COALESCE(items.items_count, 0)::int AS items_count,
           COALESCE(items.menu_items, '[]'::json) AS menu_items,
           kanban.kanban_note,
@@ -168,6 +172,7 @@ export async function GET(request: Request) {
         }).replace(",", ""),
         items: Number(row.items_count),
         total: Number(row.total_amount),
+        handledBy: row.cashier_name,
         menuItems: (row.menu_items || []).map((item) => ({
           name: item.name,
           qty: Number(item.qty),
@@ -191,12 +196,8 @@ export async function PATCH(request: Request) {
   try {
     const body = (await request.json()) as PosOrderStatusPatchPayload;
 
-    if (!body.orderCode || !body.status) {
+    if (!body.orderCode) {
       return NextResponse.json({ error: "Invalid status payload" }, { status: 400 });
-    }
-
-    if (!["Waiting", "Ready", "Done", "Cancel"].includes(body.status)) {
-      return NextResponse.json({ error: "Invalid kanban status" }, { status: 400 });
     }
 
     await client.query("BEGIN");
@@ -212,11 +213,63 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    const nextStatus = toDbStatus(body.status);
+    if (body.status) {
+      if (!["Waiting", "Ready", "Done", "Cancel"].includes(body.status)) {
+        await client.query("ROLLBACK");
+        return NextResponse.json({ error: "Invalid kanban status" }, { status: 400 });
+      }
+
+      const nextStatus = toDbStatus(body.status);
+
+      await client.query(
+        `UPDATE sales_orders SET status = $1, updated_at = NOW() WHERE id = $2`,
+        [nextStatus, row.id]
+      );
+
+      await client.query(
+        `
+          INSERT INTO order_status_history (
+            sales_order_id,
+            from_status,
+            to_status,
+            changed_by,
+            note
+          ) VALUES ($1, $2, $3, $4, $5)
+        `,
+        [row.id, row.status, nextStatus, "POS Board", `kanban:${body.status}`]
+      );
+
+      await client.query("COMMIT");
+      return NextResponse.json({ success: true });
+    }
+
+    if (!body.paymentStatus || !["pending", "paid", "failed", "voided", "refunded"].includes(body.paymentStatus)) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Invalid payment status" }, { status: 400 });
+    }
+
+    await client.query(
+      `
+        UPDATE order_payments
+        SET status = $1,
+            paid_at = CASE WHEN $1 = 'paid' THEN NOW() ELSE paid_at END,
+            updated_at = NOW()
+        WHERE id = (
+          SELECT id
+          FROM order_payments
+          WHERE sales_order_id = $2
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1
+        )
+      `,
+      [body.paymentStatus, row.id]
+    );
+
+    const nextOrderStatus = body.paymentStatus === "paid" ? "paid" : body.paymentStatus === "pending" ? "open" : row.status;
 
     await client.query(
       `UPDATE sales_orders SET status = $1, updated_at = NOW() WHERE id = $2`,
-      [nextStatus, row.id]
+      [nextOrderStatus, row.id]
     );
 
     await client.query(
@@ -229,7 +282,7 @@ export async function PATCH(request: Request) {
           note
         ) VALUES ($1, $2, $3, $4, $5)
       `,
-      [row.id, row.status, nextStatus, "POS Board", `kanban:${body.status}`]
+      [row.id, row.status, nextOrderStatus, body.handledBy || "POS Cashier", `payment:${body.paymentStatus}`]
     );
 
     await client.query("COMMIT");

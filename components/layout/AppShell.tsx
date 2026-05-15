@@ -9,7 +9,6 @@ import {
   LayoutDashboard,
   UtensilsCrossed,
   Package,
-  Clock,
   Users,
   Settings,
   HelpCircle,
@@ -28,7 +27,6 @@ const navItems = [
   { icon: Receipt, label: "Transactions", href: "/transactions" },
   { icon: Users, label: "Member", href: "/member" },
   { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
-  { icon: Clock, label: "History", href: "#" },
 ];
 
 const bottomNav = [

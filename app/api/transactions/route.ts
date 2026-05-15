@@ -11,6 +11,7 @@ type TransactionRow = {
   order_status: "draft" | "open" | "paid" | "cancelled" | "refunded";
   total_amount: string;
   notes: string | null;
+  cashier_name: string;
   items_count: number;
   payment_method: "cash" | "qris" | "card" | "e_wallet" | "transfer" | null;
   payment_status: "pending" | "paid" | "failed" | "voided" | "refunded" | null;
@@ -73,6 +74,7 @@ export async function GET(request: Request) {
           so.status AS order_status,
           so.total_amount::text,
           so.notes,
+          so.cashier_name,
           COALESCE(items.items_count, 0)::int AS items_count,
           pay.method AS payment_method,
           pay.status AS payment_status,
@@ -124,6 +126,7 @@ export async function GET(request: Request) {
         type,
         items: Number(row.items_count),
         total: Number(row.total_amount),
+        handledBy: row.cashier_name,
         method: mapMethod(row.payment_method),
         paymentStatus: mapPaymentStatus(row.payment_status),
         orderStatus: mapOrderStatus(row.order_status, row.kanban_note),

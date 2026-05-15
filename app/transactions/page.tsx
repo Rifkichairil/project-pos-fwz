@@ -10,6 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Search,
   ChevronLeft,
   ChevronRight,
@@ -21,13 +28,13 @@ import {
   Banknote,
   CalendarIcon,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface Transaction {
   id: string;
   date: string;
   time: string;
   customer: string;
+  handledBy?: string;
   type: string;
   items: number;
   total: number;
@@ -41,7 +48,7 @@ type TransactionsApiResponse = {
 };
 
 const perPage = 10;
-type DateFilter = "All" | "Today" | "Weekly" | "Monthly";
+type DateFilter = "All" | "Today" | "Weekly" | "Monthly" | "Custom";
 
 const parseTransactionDate = (date: string) => {
   const [day, month, year] = date.split("-").map(Number);
@@ -53,9 +60,9 @@ const parseTransactionDate = (date: string) => {
 const isWithinDateFilter = (date: string, dateFilter: DateFilter, customRange: DateRange | undefined) => {
   const transactionDate = parseTransactionDate(date);
 
-  if (customRange?.from || customRange?.to) {
-    const fromDate = customRange.from ? new Date(customRange.from) : null;
-    const toDate = customRange.to ? new Date(customRange.to) : null;
+  if (dateFilter === "Custom") {
+    const fromDate = customRange?.from ? new Date(customRange.from) : null;
+    const toDate = customRange?.to ? new Date(customRange.to) : null;
 
     if (fromDate) fromDate.setHours(0, 0, 0, 0);
     if (toDate) toDate.setHours(0, 0, 0, 0);
@@ -285,77 +292,90 @@ export default function TransactionsPage() {
               <span className="hidden sm:inline">Reset</span>
             </Button>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium text-muted-foreground">Date</span>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {(["All", "Today", "Weekly", "Monthly"] as const).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => { setDateFilter(d); setCustomRange(undefined); setPage(1); }}
-                    className={cn(
-                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95",
-                      dateFilter === d && !customRange?.from && !customRange?.to
-                        ? "border-blue-500 bg-blue-500/10 text-blue-600 shadow-sm"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {d}
-                  </button>
-                ))}
-                <Popover>
-                  <PopoverTrigger
-                    render={
-                      <Button
-                        variant="outline"
-                        className="h-8 min-w-[220px] justify-start px-2 text-xs font-normal"
-                      />
+              <div className="flex flex-wrap items-center gap-2">
+                <Select
+                  value={dateFilter}
+                  onValueChange={(value) => {
+                    setDateFilter(value as DateFilter);
+                    if (value !== "Custom") {
+                      setCustomRange(undefined);
                     }
-                  >
-                    <CalendarIcon className="size-3.5" />
-                    {customRange?.from ? (
-                      customRange.to ? (
-                        <>
-                          {format(customRange.from, "dd MMM yyyy")} - {format(customRange.to, "dd MMM yyyy")}
-                        </>
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="h-8 w-[180px] text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="All">All</SelectItem>
+                    <SelectItem value="Today">Today</SelectItem>
+                    <SelectItem value="Weekly">Weekly</SelectItem>
+                    <SelectItem value="Monthly">Monthly</SelectItem>
+                    <SelectItem value="Custom">Custom Range</SelectItem>
+                  </SelectContent>
+                </Select>
+                {dateFilter === "Custom" && (
+                  <Popover>
+                    <PopoverTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          className="h-8 min-w-[220px] justify-start px-2 text-xs font-normal"
+                        />
+                      }
+                    >
+                      <CalendarIcon className="size-3.5" />
+                      {customRange?.from ? (
+                        customRange.to ? (
+                          <>
+                            {format(customRange.from, "dd MMM yyyy")} - {format(customRange.to, "dd MMM yyyy")}
+                          </>
+                        ) : (
+                          format(customRange.from, "dd MMM yyyy")
+                        )
                       ) : (
-                        format(customRange.from, "dd MMM yyyy")
-                      )
-                    ) : (
-                      <span className="text-muted-foreground">Pick a date range</span>
-                    )}
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      defaultMonth={customRange?.from}
-                      selected={customRange}
-                      onSelect={(range) => { setCustomRange(range); setPage(1); }}
-                      numberOfMonths={2}
-                      disabled={(date) => date > new Date()}
-                    />
-                  </PopoverContent>
-                </Popover>
+                        <span className="text-muted-foreground">Pick a date range</span>
+                      )}
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        defaultMonth={customRange?.from}
+                        selected={customRange}
+                        onSelect={(range) => {
+                          setCustomRange(range);
+                          setPage(1);
+                        }}
+                        numberOfMonths={2}
+                        disabled={(date) => date > new Date()}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                )}
               </div>
             </div>
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium text-muted-foreground">Payment Status</span>
-              <div className="flex gap-1.5">
-                {(["All", "Success", "Pending", "Failed"] as const).map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setStatusFilter(s)}
-                    className={cn(
-                      "rounded-lg border px-3 py-1.5 text-xs font-medium transition-all duration-200 hover:scale-105 active:scale-95",
-                      statusFilter === s
-                        ? "border-primary bg-primary/10 text-primary shadow-sm"
-                        : "border-border bg-background text-muted-foreground hover:bg-muted hover:text-foreground"
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
+              <Select
+                value={statusFilter}
+                onValueChange={(value) => {
+                  setStatusFilter(value as "All" | "Success" | "Pending" | "Failed");
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="All">All</SelectItem>
+                  <SelectItem value="Success">Success</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Failed">Failed</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
@@ -373,6 +393,7 @@ export default function TransactionsPage() {
                     <th className="pb-2 font-medium text-left">Transaction ID</th>
                     <th className="pb-2 font-medium text-left">Date & Time</th>
                     <th className="pb-2 font-medium text-left">Customer</th>
+                    <th className="pb-2 font-medium text-left">Handled By</th>
                     <th className="pb-2 font-medium text-left">Type</th>
                     <th className="pb-2 font-medium border-r text-left">Total</th>
                     <th className="pb-2 font-medium text-center">Method</th>
@@ -383,15 +404,15 @@ export default function TransactionsPage() {
                 <tbody className="divide-y">
                   {loading ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">Loading transactions...</td>
+                      <td colSpan={9} className="py-6 text-center text-xs text-muted-foreground">Loading transactions...</td>
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-xs text-red-600">{error}</td>
+                      <td colSpan={9} className="py-6 text-center text-xs text-red-600">{error}</td>
                     </tr>
                   ) : paginated.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="py-6 text-center text-xs text-muted-foreground">No transactions found.</td>
+                      <td colSpan={9} className="py-6 text-center text-xs text-muted-foreground">No transactions found.</td>
                     </tr>
                   ) : (
                     paginated.map((t, index) => (
@@ -403,6 +424,7 @@ export default function TransactionsPage() {
                         <td className="py-2.5 text-left font-medium">{t.id}</td>
                         <td className="py-2.5 text-left text-muted-foreground">{t.date}, {t.time}</td>
                         <td className="py-2.5 text-left">{t.customer}</td>
+                        <td className="py-2.5 text-left text-muted-foreground">{t.handledBy || "-"}</td>
                         <td className="py-2.5 text-left text-muted-foreground">{t.type}</td>
                         <td className="py-2.5 text-left font-semibold">Rp {t.total.toLocaleString("id-ID")}</td>
                         <td className="py-2.5">
