@@ -12,13 +12,23 @@ type CreateMenuPayload = {
   category?: string;
   price?: number | string;
   ingredients?: MenuIngredientPayload[];
+  addonIds?: number[];
+};
+
+type EditMenuPayload = {
+  id?: number;
+  name?: string;
+  category?: string;
+  price?: number | string;
+  ingredients?: MenuIngredientPayload[];
+  addonIds?: number[];
 };
 
 type PgError = Error & { code?: string };
 
 export async function GET() {
   try {
-    const [recipesResult, productsResult, ingredientsResult, lowStockMenusResult] = await Promise.all([
+    const [recipesResult, productsResult, ingredientsResult, lowStockMenusResult, addonsResult, settingsResult] = await Promise.all([
       db.query<{
         id: number;
         name: string;
@@ -93,7 +103,26 @@ export async function GET() {
             ELSE 1000
           END)
       `),
+      db.query<{ menu_id: number; addon_id: number; addon_name: string; addon_price: string }>(`
+        SELECT maa.menu_id, a.id AS addon_id, a.name AS addon_name, a.price::text AS addon_price
+        FROM menu_addon_assignments maa
+        JOIN addons a ON a.id = maa.addon_id AND a.is_active = TRUE
+        ORDER BY maa.menu_id, a.name
+      `),
+      db.query<{ inventory_policy: string }>(
+        `SELECT inventory_policy FROM settings WHERE id = 1`
+      ),
     ]);
+
+    const inventoryPolicy = settingsResult.rows[0]?.inventory_policy || "medium";
+
+    const addonsMap = new Map<number, Array<{ id: number; name: string; price: number }>>();
+    for (const row of addonsResult.rows) {
+      if (!addonsMap.has(row.menu_id)) {
+        addonsMap.set(row.menu_id, []);
+      }
+      addonsMap.get(row.menu_id)!.push({ id: row.addon_id, name: row.addon_name, price: Number(row.addon_price) });
+    }
 
     const lowStockMenuMap = new Map<number, string[]>();
     for (const row of lowStockMenusResult.rows) {
@@ -103,16 +132,39 @@ export async function GET() {
       lowStockMenuMap.get(row.menu_id)!.push(row.ingredient_name);
     }
 
+    // Build ingredient stock map for soldOut calculation (strict mode)
+    const ingredientStockMap = new Map<string, number>();
+    for (const row of ingredientsResult.rows) {
+      ingredientStockMap.set(row.name, Number(row.stock));
+    }
+
+    // Check which menus are sold out (not enough stock for 1 serving)
+    const soldOutMenuIds = new Set<number>();
+    if (inventoryPolicy === "strict") {
+      for (const recipe of recipesResult.rows) {
+        for (const ing of recipe.ingredients) {
+          const currentStock = ingredientStockMap.get(ing.name) ?? 0;
+          if (currentStock < ing.qty) {
+            soldOutMenuIds.add(recipe.id);
+            break;
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       recipes: recipesResult.rows,
+      inventoryPolicy,
       products: productsResult.rows.map((row) => ({
         id: row.id,
         name: row.name,
         category: row.category,
         hpp: Number(row.hpp),
         price: Number(row.selling_price),
-        lowStock: lowStockMenuMap.has(row.id),
-        lowStockItems: lowStockMenuMap.get(row.id) || [],
+        lowStock: inventoryPolicy === "medium" ? lowStockMenuMap.has(row.id) : false,
+        lowStockItems: inventoryPolicy === "medium" ? (lowStockMenuMap.get(row.id) || []) : [],
+        soldOut: inventoryPolicy === "strict" ? soldOutMenuIds.has(row.id) : false,
+        addons: addonsMap.get(row.id) || [],
       })),
       ingredients: ingredientsResult.rows.map((row) => ({
         name: row.name,
@@ -215,6 +267,15 @@ export async function POST(request: Request) {
       [menuId, hpp, price]
     );
 
+    // Assign addons to menu
+    const addonIds = Array.isArray(body.addonIds) ? body.addonIds.filter((id) => Number.isFinite(id) && id > 0) : [];
+    for (const addonId of addonIds) {
+      await client.query(
+        `INSERT INTO menu_addon_assignments (menu_id, addon_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [menuId, addonId]
+      );
+    }
+
     await client.query("COMMIT");
 
     return NextResponse.json(
@@ -243,6 +304,170 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json({ error: "Failed to create menu" }, { status: 500 });
+  } finally {
+    client.release();
+  }
+}
+
+export async function PATCH(request: Request) {
+  const body = (await request.json()) as EditMenuPayload;
+
+  const menuId = Number(body.id);
+  if (!Number.isFinite(menuId) || menuId <= 0) {
+    return NextResponse.json({ error: "Invalid menu ID" }, { status: 400 });
+  }
+
+  const name = body.name?.trim();
+  const category = body.category?.trim();
+  const price = body.price !== undefined ? Number(body.price) : undefined;
+  const incomingIngredients = Array.isArray(body.ingredients) ? body.ingredients : undefined;
+
+  const ingredients = incomingIngredients
+    ?.map((ingredient) => ({
+      name: ingredient.name?.trim() ?? "",
+      qty: Number(ingredient.qty),
+      unit: ingredient.unit?.trim() ?? "",
+    }))
+    .filter((ingredient) => ingredient.name && Number.isFinite(ingredient.qty) && ingredient.qty > 0);
+
+  const client = await db.connect();
+
+  try {
+    await client.query("BEGIN");
+
+    // Verify menu exists
+    const existing = await client.query<{ id: number }>(
+      `SELECT id FROM menus WHERE id = $1 AND is_active = TRUE`,
+      [menuId]
+    );
+    if (existing.rows.length === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Menu not found" }, { status: 404 });
+    }
+
+    // Update menus table (name, category)
+    if (name || category) {
+      const setClauses: string[] = [];
+      const values: (string | number)[] = [];
+      let paramIdx = 1;
+
+      if (name) {
+        setClauses.push(`name = $${paramIdx++}`);
+        values.push(name);
+      }
+      if (category) {
+        setClauses.push(`category = $${paramIdx++}`);
+        values.push(category);
+      }
+
+      values.push(menuId);
+      await client.query(
+        `UPDATE menus SET ${setClauses.join(", ")} WHERE id = $${paramIdx}`,
+        values
+      );
+    }
+
+    // Update ingredients (replace all)
+    let hpp: number | undefined;
+    if (ingredients && ingredients.length > 0) {
+      // Delete old ingredients
+      await client.query(`DELETE FROM menu_ingredients WHERE menu_id = $1`, [menuId]);
+
+      const ingredientNames = ingredients.map((ing) => ing.name);
+      const ingredientRows = await client.query<{
+        id: number;
+        name: string;
+        base_unit: string;
+        price_per_unit: string;
+      }>(
+        `SELECT id, name, base_unit, price_per_unit FROM ingredients WHERE name = ANY($1::text[]) AND is_active = TRUE`,
+        [ingredientNames]
+      );
+
+      const ingredientMap = new Map(ingredientRows.rows.map((row) => [row.name, row]));
+      const missingIngredient = ingredientNames.find((n) => !ingredientMap.has(n));
+
+      if (missingIngredient) {
+        await client.query("ROLLBACK");
+        return NextResponse.json(
+          { error: `Ingredient not found: ${missingIngredient}` },
+          { status: 400 }
+        );
+      }
+
+      hpp = 0;
+      for (const ingredient of ingredients) {
+        const row = ingredientMap.get(ingredient.name)!;
+        const unitPrice = Number(row.price_per_unit);
+        const resolvedUnit = ingredient.unit || row.base_unit;
+
+        await client.query(
+          `INSERT INTO menu_ingredients (menu_id, ingredient_id, qty, unit) VALUES ($1, $2, $3, $4)`,
+          [menuId, row.id, ingredient.qty, resolvedUnit]
+        );
+
+        hpp += ingredient.qty * unitPrice;
+      }
+    }
+
+    // Update menu_prices (selling_price and/or hpp)
+    if (price !== undefined || hpp !== undefined) {
+      // Deactivate old price
+      await client.query(
+        `UPDATE menu_prices SET is_active = FALSE WHERE menu_id = $1 AND is_active = TRUE`,
+        [menuId]
+      );
+
+      // If hpp wasn't recalculated from ingredients, get the old hpp
+      if (hpp === undefined) {
+        const oldPrice = await client.query<{ hpp: string }>(
+          `SELECT hpp FROM menu_prices WHERE menu_id = $1 ORDER BY id DESC LIMIT 1`,
+          [menuId]
+        );
+        hpp = oldPrice.rows.length > 0 ? Number(oldPrice.rows[0].hpp) : 0;
+      }
+
+      const sellingPrice = price !== undefined && Number.isFinite(price) && price > 0
+        ? price
+        : (await client.query<{ selling_price: string }>(
+            `SELECT selling_price FROM menu_prices WHERE menu_id = $1 ORDER BY id DESC LIMIT 1`,
+            [menuId]
+          )).rows[0]?.selling_price ?? 0;
+
+      await client.query(
+        `INSERT INTO menu_prices (menu_id, hpp, selling_price, start_date, is_active) VALUES ($1, $2, $3, CURRENT_DATE, TRUE)`,
+        [menuId, hpp, sellingPrice]
+      );
+    }
+
+    // Update addon assignments (replace all)
+    if (Array.isArray(body.addonIds)) {
+      await client.query(`DELETE FROM menu_addon_assignments WHERE menu_id = $1`, [menuId]);
+
+      const addonIds = body.addonIds.filter((id) => Number.isFinite(id) && id > 0);
+      for (const addonId of addonIds) {
+        await client.query(
+          `INSERT INTO menu_addon_assignments (menu_id, addon_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [menuId, addonId]
+        );
+      }
+    }
+
+    await client.query("COMMIT");
+
+    return NextResponse.json({ success: true, menuId });
+  } catch (error) {
+    try {
+      await client.query("ROLLBACK");
+    } catch {}
+
+    const pgError = error as PgError;
+
+    if (pgError.code === "23505") {
+      return NextResponse.json({ error: "Menu name already exists" }, { status: 409 });
+    }
+
+    return NextResponse.json({ error: "Failed to update menu" }, { status: 500 });
   } finally {
     client.release();
   }

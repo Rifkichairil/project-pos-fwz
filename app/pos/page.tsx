@@ -45,6 +45,7 @@ interface CartItem {
   note: string;
   image: string;
   category: string;
+  addons: Array<{ name: string; price: number }>;
 }
 
 type KanbanStatus = "Queue" | "Process" | "Ready" | "Served" | "Done";
@@ -96,6 +97,8 @@ type PosMenuItem = {
   image: string;
   lowStock: boolean;
   lowStockItems: string[];
+  soldOut: boolean;
+  addons: Array<{ name: string; price: number }>;
 };
 
 type MenuApiResponse = {
@@ -106,11 +109,13 @@ type MenuApiResponse = {
     price: number;
     lowStock?: boolean;
     lowStockItems?: string[];
+    soldOut?: boolean;
+    addons?: Array<{ name: string; price: number }>;
   }>;
 };
 
 function createOrderCode() {
-  return `TRX-${Date.now()}`;
+  return `TRX-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}${String(new Date().getDate()).padStart(2, "0")}-TEMP`;
 }
 
 function getMenuInitials(name: string) {
@@ -162,7 +167,14 @@ export default function PosPage() {
   const [tableNumber, setTableNumber] = useState("");
   const [selectedVariants, setSelectedVariants] = useState<Record<number, string>>({});
   const [selectedSugar, setSelectedSugar] = useState<Record<number, string>>({});
+  const [selectedAddons, setSelectedAddons] = useState<Record<number, Array<{ name: string; price: number }>>>({});
   const [editingCartItem, setEditingCartItem] = useState<number | null>(null);
+  const [addToCartModal, setAddToCartModal] = useState<PosMenuItem | null>(null);
+  const [modalVariant, setModalVariant] = useState("regular");
+  const [modalSugar, setModalSugar] = useState("normal");
+  const [modalAddons, setModalAddons] = useState<Array<{ name: string; price: number }>>([]);
+  const [modalNote, setModalNote] = useState("");
+  const [modalQty, setModalQty] = useState(1);
   const [selectedPromo, setSelectedPromo] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [cashAmount, setCashAmount] = useState("");
@@ -188,6 +200,8 @@ export default function PosPage() {
     taxes: number;
     total: number;
     change: number;
+    isMember: boolean;
+    pointsEarned: number;
   } | null>(null);
   const [midtransRedirectUrl, setMidtransRedirectUrl] = useState("");
   const [midtransLoading, setMidtransLoading] = useState(false);
@@ -221,6 +235,9 @@ export default function PosPage() {
   const [taxService, setTaxService] = useState(0);
   const [taxPpn, setTaxPpn] = useState(0);
   const [storeWifiPassword, setStoreWifiPassword] = useState("");
+  const [storeQrisImage, setStoreQrisImage] = useState("");
+  const [pointPerRupiah, setPointPerRupiah] = useState(10000);
+  const [pointValue, setPointValue] = useState(1);
 
   const cashierName = "Jennie Doe";
 
@@ -236,17 +253,23 @@ export default function PosPage() {
       if (!response.ok) return;
       const data = await response.json() as {
         wifiPassword: string;
+        qrisImageUrl: string;
         pb1Enabled: boolean;
         pb1Rate: number;
         serviceEnabled: boolean;
         serviceRate: number;
         ppnEnabled: boolean;
         ppnRate: number;
+        pointPerRupiah: number;
+        pointValue: number;
       };
       setTaxPb1(data.pb1Enabled ? data.pb1Rate : 0);
       setTaxService(data.serviceEnabled ? data.serviceRate : 0);
       setTaxPpn(data.ppnEnabled ? data.ppnRate : 0);
       setStoreWifiPassword(data.wifiPassword || "");
+      setStoreQrisImage(data.qrisImageUrl || "");
+      setPointPerRupiah(data.pointPerRupiah || 10000);
+      setPointValue(data.pointValue || 1);
     } catch {
       // fallback to 0
     }
@@ -268,6 +291,8 @@ export default function PosPage() {
         image: fallbackMenuImage,
         lowStock: product.lowStock || false,
         lowStockItems: product.lowStockItems || [],
+        soldOut: product.soldOut || false,
+        addons: product.addons || [],
       }));
 
       setMenuItems(mapped);
@@ -550,14 +575,19 @@ export default function PosPage() {
     const sugar = item.category === "Beverage"
       ? (selectedSugar[item.id] || "Normal")
       : "-";
+    const addons = selectedAddons[item.id] || [];
+    const addonTotal = addons.reduce((sum, a) => sum + a.price, 0);
 
     setCart((prev) => {
+      const addonKey = addons.map(a => a.name).sort().join(",");
       const existing = prev.find(
         (c) => c.name === item.name && c.variant === variant && c.sugar === sugar
+          && c.addons.map(a => a.name).sort().join(",") === addonKey
       );
       if (existing) {
         return prev.map((c) =>
           c.name === item.name && c.variant === variant && c.sugar === sugar
+            && c.addons.map(a => a.name).sort().join(",") === addonKey
             ? { ...c, qty: c.qty + qty }
             : c
         );
@@ -569,16 +599,61 @@ export default function PosPage() {
           name: item.name,
           variant,
           sugar,
-          price: item.price,
+          price: item.price + addonTotal,
           qty,
           note: "",
           image: item.image,
           category: item.category,
+          addons,
         },
       ];
     });
 
     setMenuQuantities((prev) => ({ ...prev, [item.id]: 0 }));
+    setSelectedAddons((prev) => ({ ...prev, [item.id]: [] }));
+  };
+
+  const addToCartFromModal = () => {
+    if (!addToCartModal) return;
+    const item = addToCartModal;
+    const variant = modalVariant === "regular" ? "Regular" : "Jumbo";
+    const sugar = item.category === "Beverage" ? modalSugar : "-";
+    const addons = modalAddons;
+    const addonTotal = addons.reduce((sum, a) => sum + a.price, 0);
+    const variantExtra = modalVariant === "jumbo" ? 5000 : 0;
+
+    setCart((prev) => {
+      const addonKey = addons.map(a => a.name).sort().join(",");
+      const existing = prev.find(
+        (c) => c.name === item.name && c.variant === variant && c.sugar === sugar
+          && c.addons.map(a => a.name).sort().join(",") === addonKey
+      );
+      if (existing) {
+        return prev.map((c) =>
+          c.name === item.name && c.variant === variant && c.sugar === sugar
+            && c.addons.map(a => a.name).sort().join(",") === addonKey
+            ? { ...c, qty: c.qty + modalQty }
+            : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: item.id,
+          name: item.name,
+          variant,
+          sugar,
+          price: item.price + addonTotal + variantExtra,
+          qty: modalQty,
+          note: modalNote,
+          image: item.image,
+          category: item.category,
+          addons,
+        },
+      ];
+    });
+
+    setAddToCartModal(null);
   };
 
   const resetCart = () => {
@@ -678,11 +753,23 @@ export default function PosPage() {
   };
 
   const saveOrderToDb = async (paymentStatus: "pending" | "paid", methodOverride?: PaymentMethod) => {
-    const orderCode = activeOrderCode || createOrderCode();
+    let orderCode = activeOrderCode;
     const payment = methodOverride || paymentMethod;
 
     setOrderSaving(true);
     setOrderSaveError("");
+
+    // Generate order code from API if not already set
+    if (!orderCode) {
+      try {
+        const codeRes = await fetch("/api/pos/order-code", { method: "POST" });
+        const codeData = await codeRes.json() as { orderCode?: string };
+        orderCode = codeData.orderCode || createOrderCode();
+      } catch {
+        orderCode = createOrderCode();
+      }
+    }
+
     setActiveOrderCode(orderCode);
 
     try {
@@ -717,11 +804,12 @@ export default function PosPage() {
             price: item.price,
             qty: item.qty,
             note: item.note,
+            addons: item.addons,
           })),
         }),
       });
 
-      const data = (await response.json()) as { error?: string; orderCode?: string };
+      const data = (await response.json()) as { error?: string; orderCode?: string; pointsEarned?: number };
       if (!response.ok) {
         throw new Error(data.error || "Failed to save order");
       }
@@ -738,7 +826,7 @@ export default function PosPage() {
         }
       }
 
-      return data.orderCode || orderCode;
+      return { orderCode: data.orderCode || orderCode, pointsEarned: data.pointsEarned || 0 };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to save order";
       setOrderSaveError(message);
@@ -749,7 +837,7 @@ export default function PosPage() {
     }
   };
 
-  const finalizeOrderPayment = async (orderCode: string) => {
+  const finalizeOrderPayment = async (orderCode: string): Promise<number> => {
     setOrderSaving(true);
     setOrderSaveError("");
 
@@ -766,10 +854,11 @@ export default function PosPage() {
         }),
       });
 
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as { error?: string; pointsEarned?: number };
       if (!response.ok) {
         throw new Error(data.error || "Failed to finalize payment");
       }
+      return data.pointsEarned || 0;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to finalize payment";
       setOrderSaveError(message);
@@ -811,7 +900,7 @@ export default function PosPage() {
         throw new Error(data.error || "Failed to create Midtrans transaction");
       }
 
-      setReceiptOrderId(`#${orderId.slice(-4)}`);
+      setReceiptOrderId(`#${orderId}`);
       setMidtransRedirectUrl(data.redirect_url || "");
       setShowConfirmModal(false);
       setShowMidtransQRModal(true);
@@ -964,7 +1053,7 @@ export default function PosPage() {
                       <p className="text-xs text-muted-foreground">{order.time}</p>
                       <p className="text-xs text-muted-foreground">Handled by: {order.handledBy || "-"}</p>
                       <p className="mt-2 text-xs text-muted-foreground">{order.items} Items</p>
-                      <p className="mt-1 text-xs text-muted-foreground">#{order.orderCode.slice(-4)}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">#{order.orderCode}</p>
                     </CardContent>
                   </Card>
                 ))}
@@ -991,14 +1080,14 @@ export default function PosPage() {
               <p className="text-xs text-muted-foreground">Loading menu...</p>
             ) : menuError ? (
               <p className="text-xs text-red-600">{menuError}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">{filteredMenu.length} menu items</p>
-            )}
+            ) : null}
           </div>
 
           {/* Categories */}
           <div className="mb-4 flex gap-2 flex-wrap">
-            {categories.map((cat) => (
+            {categories.map((cat) => {
+              const count = cat === "All" ? menuItems.length : menuItems.filter((m) => m.category === cat).length;
+              return (
               <button
                 key={cat}
                 onClick={() => setActiveCategory(cat)}
@@ -1008,9 +1097,10 @@ export default function PosPage() {
                     : "rounded-full px-3 py-1.5 text-xs sm:px-4 sm:py-1.5 sm:text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground whitespace-nowrap"
                 }
               >
-                {cat}
+                {cat} ({count})
               </button>
-            ))}
+              );
+            })}
           </div>
 
           {/* Menu Grid */}
@@ -1019,14 +1109,20 @@ export default function PosPage() {
             className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
           >
             {filteredMenu.map((item) => (
-              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", cart.some((c) => c.id === item.id) ? "border-orange-300 border-2" : "border border-border/40")}>
+              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", item.soldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-orange-300 border-2" : "border border-border/40")}>
                 <div className="relative flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
-                  {item.lowStock && (
+                  {item.soldOut && (
+                    <Badge variant="outline" className="absolute top-2 right-2 border-red-300 bg-red-100 text-[9px] text-red-700 px-1.5 py-0.5">
+                      Sold Out
+                    </Badge>
+                  )}
+                  {!item.soldOut && item.lowStock && (
                     <div className="absolute top-2 right-2 group/lowstock">
                       <Badge variant="outline" className="cursor-help border-red-200 bg-red-50 text-[9px] text-red-600 px-1.5 py-0.5">
                         Stok Menipis
                       </Badge>
                       <span className="pointer-events-none absolute top-full right-0 z-50 mt-1 whitespace-nowrap rounded-lg border bg-popover px-2.5 py-1.5 text-[10px] text-popover-foreground shadow-md opacity-0 transition-opacity group-hover/lowstock:opacity-100">
+                        <span className="block font-medium mb-0.5">Stok Menipis:</span>
                         {item.lowStockItems.map((name, i) => (
                           <span key={i} className="block">{name}</span>
                         ))}
@@ -1040,82 +1136,25 @@ export default function PosPage() {
                   </Avatar>
                 </div>
                 <CardContent className="p-2">
-                  <p className="text-sm font-medium leading-tight">{item.name}</p>
-                  <p className="text-sm font-semibold leading-tight">
-                    Rp. {item.price.toLocaleString("id-ID")}
-                  </p>
-                  {item.category === "Beverage" ? (
-                  <div className="mt-1 flex gap-1.5">
-                    <Select
-                      value={selectedVariants[item.id] || "regular"}
-                      onValueChange={(val) => {
-                        if (val) setSelectedVariants((prev) => ({ ...prev, [item.id]: val }));
-                      }}
-                    >
-                      <SelectTrigger className="h-6 flex-1 text-xs px-2">
-                        <SelectValue placeholder="Regular" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="regular">Regular</SelectItem>
-                        <SelectItem value="large">Large</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <Select
-                      value={selectedSugar[item.id] || "normal"}
-                      onValueChange={(val) => {
-                        if (val) setSelectedSugar((prev) => ({ ...prev, [item.id]: val }));
-                      }}
-                    >
-                      <SelectTrigger className="h-6 flex-1 text-xs px-2">
-                        <SelectValue placeholder="Normal" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="normal">Normal</SelectItem>
-                        <SelectItem value="less">Less Sugar</SelectItem>
-                        <SelectItem value="no">No Sugar</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  ) : (
-                  <div className="mt-1">
-                    <Select
-                      value={selectedVariants[item.id] || "regular"}
-                      onValueChange={(val) => {
-                        if (val) setSelectedVariants((prev) => ({ ...prev, [item.id]: val }));
-                      }}
-                    >
-                      <SelectTrigger className="h-6 w-full text-xs px-2">
-                        <SelectValue placeholder="Regular" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="regular">Regular</SelectItem>
-                        <SelectItem value="extra">Extra</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  )}
-                  <div className="mt-1.5 flex items-center justify-between gap-1.5">
-                    <div className="flex items-center rounded-lg border">
-                      <button
-                        onClick={() => updateMenuQty(item.id, -1)}
-                        className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground"
-                      >
-                        <Minus className="size-3" />
-                      </button>
-                      <span className="w-5 text-center text-sm">
-                        {cart.filter((c) => c.id === item.id).reduce((sum, c) => sum + c.qty, 0) || menuQuantities[item.id] || 0}
-                      </span>
-                      <button
-                        onClick={() => updateMenuQty(item.id, 1)}
-                        className="flex h-7 w-7 items-center justify-center text-muted-foreground hover:text-foreground"
-                      >
-                        <Plus className="size-3" />
-                      </button>
+                  <div className="flex items-center justify-between gap-1">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-tight truncate">{item.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        Rp. {item.price.toLocaleString("id-ID")}
+                      </p>
                     </div>
                     <Button
                       variant="outline"
-                      className="h-7 w-7 flex-none rounded-lg p-0"
-                      onClick={() => addToCart(item)}
+                      className="h-7 w-7 shrink-0 rounded-lg p-0"
+                      disabled={item.soldOut}
+                      onClick={() => {
+                        setAddToCartModal(item);
+                        setModalVariant("regular");
+                        setModalSugar("normal");
+                        setModalAddons([]);
+                        setModalNote("");
+                        setModalQty(1);
+                      }}
                     >
                       <Plus className="size-3.5" />
                     </Button>
@@ -1231,11 +1270,14 @@ export default function PosPage() {
                             >
                               <CardContent className="p-3">
                                 <div className="mb-2 flex items-center justify-between">
-                                  <span className="text-xs text-muted-foreground">#{order.orderCode.slice(-4)}</span>
+                                  <span className="text-xs text-muted-foreground">#{order.orderCode}</span>
                                   <span className="text-xs text-muted-foreground">{order.time}</span>
                                 </div>
                                 <p className="text-sm font-medium">{order.name}</p>
                                 <p className="text-xs text-muted-foreground">{order.type}</p>
+                                {(order.type || "").toLowerCase().replace(/\s+/g, "") === "dinein" && order.tableName && (
+                                  <p className="text-xs text-muted-foreground">Table: {order.tableName}</p>
+                                )}
                                 <p className="text-xs text-muted-foreground">Handled by: {order.handledBy || "-"}</p>
                                 <div className="mt-2 flex items-center justify-between">
                                   <span className="text-xs text-muted-foreground">{order.items} items</span>
@@ -1516,6 +1558,11 @@ export default function PosPage() {
                         Sugar : {item.sugar}
                       </p>
                       )}
+                      {item.addons.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Addon: {item.addons.map(a => a.name).join(", ")}
+                        </p>
+                      )}
                       {item.note && (
                         <p className="text-xs italic text-amber-600">
                           Note: {item.note}
@@ -1653,7 +1700,7 @@ export default function PosPage() {
                   <SelectItem value="qris">QRIS</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={selectedPromo} onValueChange={(val) => { setSelectedPromo(val === "none" ? "" : val); }}>
+              <Select value={selectedPromo} onValueChange={(val) => { setSelectedPromo(!val || val === "none" ? "" : val); }}>
                 <SelectTrigger className="col-span-3 h-9 w-full rounded-lg text-sm">
                   <SelectValue placeholder="Promo code" />
                 </SelectTrigger>
@@ -1667,17 +1714,22 @@ export default function PosPage() {
             </div>
 
             {paymentMethod === "cash" && (
-              <div>
-                <label className="mb-1 block text-xs text-muted-foreground">
-                  Amount Paid
-                </label>
-                <Input
-                  type="number"
-                  placeholder="Enter amount"
-                  value={cashAmount}
-                  onChange={(e) => setCashAmount(e.target.value)}
-                  className="h-9 rounded-lg text-sm"
-                />
+              <div className="flex items-center gap-2">
+                <label className="shrink-0 text-xs text-muted-foreground">Amount Paid</label>
+                <div className="relative flex-1">
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp.</span>
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={cashAmount ? Number(cashAmount).toLocaleString("id-ID") : ""}
+                    onChange={(e) => {
+                      const digits = e.target.value.replace(/\D/g, "");
+                      setCashAmount(digits);
+                    }}
+                    className="h-9 rounded-lg pl-8 text-sm"
+                  />
+                </div>
               </div>
             )}
 
@@ -1731,7 +1783,7 @@ export default function PosPage() {
         <div className="border-t p-4">
           <Button
             className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            disabled={!customerName.trim() || !orderType || !tableNumber || cart.length === 0 || (paymentMethod === "cash" && (!cashAmount || Number(cashAmount) < total))}
+            disabled={!customerName.trim() || !orderType || (orderType === "dinein" && !tableNumber) || cart.length === 0 || (paymentMethod === "cash" && (!cashAmount || Number(cashAmount) < total))}
             onClick={() => {
               setMidtransError("");
               setMidtransRedirectUrl("");
@@ -1746,6 +1798,148 @@ export default function PosPage() {
       </>
       )}
     </div>
+
+      {/* Add to Cart Modal */}
+      {addToCartModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">{addToCartModal.name}</h3>
+              <button onClick={() => { setAddToCartModal(null); setModalVariant("regular"); setModalSugar("normal"); setModalAddons([]); setModalNote(""); setModalQty(1); }} className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+                <X className="size-4" />
+              </button>
+            </div>
+            <p className="mb-4 text-sm text-muted-foreground">Rp. {addToCartModal.price.toLocaleString("id-ID")}</p>
+
+            <div className="space-y-4">
+              {/* Porsi */}
+              <div>
+                <label className="mb-2 block text-xs font-medium">Porsi</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModalVariant("regular")}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                      modalVariant === "regular"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    Regular
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalVariant("jumbo")}
+                    className={cn(
+                      "flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+                      modalVariant === "jumbo"
+                        ? "border-primary bg-primary/10 text-primary"
+                        : "border-border text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    Jumbo (+5k)
+                  </button>
+                </div>
+              </div>
+
+              {/* Sugar (only for Beverage) */}
+              {addToCartModal.category === "Beverage" && (
+              <div>
+                <label className="mb-2 block text-xs font-medium">Sugar Level</label>
+                <div className="flex gap-2">
+                  {[
+                    { value: "normal", label: "Normal" },
+                    { value: "less", label: "Less Sugar" },
+                    { value: "no", label: "No Sugar" },
+                  ].map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setModalSugar(opt.value)}
+                      className={cn(
+                        "flex-1 rounded-lg border px-2 py-2 text-xs font-medium transition-colors",
+                        modalSugar === opt.value
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:bg-muted"
+                      )}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              )}
+
+              {/* Addon */}
+              {addToCartModal.addons.length > 0 && (
+              <div>
+                <label className="mb-2 block text-xs font-medium">Addon</label>
+                <div className="space-y-1.5">
+                  {addToCartModal.addons.map((addon) => {
+                    const isSelected = modalAddons.some(a => a.name === addon.name);
+                    return (
+                      <label key={addon.name} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 transition-colors hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {
+                            if (isSelected) {
+                              setModalAddons(modalAddons.filter(a => a.name !== addon.name));
+                            } else {
+                              setModalAddons([...modalAddons, addon]);
+                            }
+                          }}
+                          className="size-3.5 rounded border-border"
+                        />
+                        <span className="flex-1 text-xs">{addon.name}</span>
+                        {addon.price > 0 && <span className="text-xs text-muted-foreground">+Rp. {addon.price.toLocaleString("id-ID")}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              )}
+
+              {/* Catatan */}
+              <div>
+                <label className="mb-2 block text-xs font-medium">Catatan</label>
+                <Input
+                  value={modalNote}
+                  onChange={(e) => setModalNote(e.target.value)}
+                  placeholder="Tambahkan catatan..."
+                  className="h-9 rounded-lg text-sm"
+                />
+              </div>
+
+              {/* Qty */}
+              <div className="flex items-center justify-center gap-3">
+                <button
+                  onClick={() => setModalQty(Math.max(1, modalQty - 1))}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border text-muted-foreground hover:text-foreground"
+                >
+                  <Minus className="size-4" />
+                </button>
+                <span className="w-8 text-center text-lg font-semibold">{modalQty}</span>
+                <button
+                  onClick={() => setModalQty(modalQty + 1)}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="size-4" />
+                </button>
+              </div>
+
+              {/* Total & Button */}
+              <Button
+                className="h-11 w-full rounded-xl bg-primary text-sm font-medium"
+                onClick={addToCartFromModal}
+              >
+                Tambah ke Keranjang — Rp. {((addToCartModal.price + (modalVariant === "jumbo" ? 5000 : 0) + modalAddons.reduce((s, a) => s + a.price, 0)) * modalQty).toLocaleString("id-ID")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Customer Information Modal */}
       {showCustomerModal && (
@@ -1827,7 +2021,9 @@ export default function PosPage() {
 
               {/* Table Number */}
               <div>
-                <label className="mb-1.5 block text-xs text-muted-foreground">Table Number</label>
+                <label className="mb-1.5 block text-xs text-muted-foreground">
+                  Table Number {orderType === "dinein" && <span className="text-red-500">*</span>}
+                </label>
                 <Select value={tableNumber} onValueChange={(val) => { if (val) setTableNumber(val); }}>
                   <SelectTrigger className="h-9 w-full rounded-lg text-sm">
                     <SelectValue placeholder="Pilih meja" />
@@ -1907,14 +2103,16 @@ export default function PosPage() {
                 onClick={async () => {
                   if (paymentMethod === "cash") {
                     try {
-                      const savedOrderCode = await saveOrderToDb("paid", "cash");
+                      const result = await saveOrderToDb("paid", "cash");
                       setShowConfirmModal(false);
-                      setReceiptOrderId(`#${savedOrderCode.slice(-4)}`);
+                      setReceiptOrderId(`#${result.orderCode}`);
                       setReceiptData({
                         customerName, orderType, tableNumber, paymentMethod, cashAmount,
                         cart: [...cart], subtotal, discount,
                         taxPb1, taxPb1Amount, taxService, taxServiceAmount, taxPpn, taxPpnAmount,
                         taxes, total, change,
+                        isMember,
+                        pointsEarned: result.pointsEarned,
                       });
                       setShowReceiptModal(true);
                       toast.success("Pembayaran berhasil!");
@@ -1925,19 +2123,21 @@ export default function PosPage() {
                     return;
                   }
 
-                  // QRIS → via Midtrans
-                  const existingOrderCode = activeOrderCode;
-                  let pendingOrderCode = existingOrderCode;
+                  // QRIS → show QR image, status pending
+                  let pendingOrderCode = activeOrderCode;
 
                   if (!pendingOrderCode) {
                     try {
-                      pendingOrderCode = await saveOrderToDb("pending", "qris");
+                      const result = await saveOrderToDb("pending", "qris");
+                      pendingOrderCode = result.orderCode;
                     } catch {
                       return;
                     }
                   }
 
-                  await handleMidtransPayNow(pendingOrderCode);
+                  setActiveOrderCode(pendingOrderCode);
+                  setShowConfirmModal(false);
+                  setShowMidtransQRModal(true);
                 }}
               >
                 {midtransLoading || orderSaving ? "Processing..." : "Pay Now"}
@@ -1956,38 +2156,21 @@ export default function PosPage() {
       {showMidtransQRModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
           <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
-            <h3 className="mb-4 text-lg font-semibold">Midtrans QR Payment</h3>
+            <h3 className="mb-4 text-lg font-semibold">Pembayaran QRIS</h3>
             <div className="mb-4 flex flex-col items-center gap-3">
-              {midtransLoading ? (
-                <p className="text-sm text-muted-foreground">Generating Midtrans QR...</p>
-              ) : midtransError ? (
-                <div className="w-full rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                  {midtransError}
-                </div>
-              ) : midtransRedirectUrl ? (
-                <>
-                  <div className="w-full overflow-hidden rounded-lg border">
-                    <iframe
-                      src={midtransRedirectUrl}
-                      title="Midtrans Payment"
-                      className="h-96 w-full"
-                    />
-                  </div>
-                  <a
-                    href={midtransRedirectUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-xs text-blue-600 underline"
-                  >
-                    Open Midtrans in new tab
-                  </a>
-                </>
+              {storeQrisImage ? (
+                <img src={storeQrisImage} alt="QRIS" className="h-64 w-64 rounded-lg border object-contain bg-white" />
               ) : (
-                <p className="text-sm text-muted-foreground">No QR session found.</p>
+                <div className="flex h-64 w-64 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted/30">
+                  <p className="text-xs text-muted-foreground text-center px-4">Gambar QRIS belum diupload. Silakan upload di menu Settings.</p>
+                </div>
               )}
-              <p className="text-center text-sm text-muted-foreground">
-                Scan QR dari halaman Midtrans lalu lanjutkan setelah pembayaran sukses.
-              </p>
+              <div className="text-center">
+                <p className="text-sm font-semibold">Total: Rp. {total.toLocaleString("id-ID")}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Minta customer scan QR di atas, lalu konfirmasi setelah pembayaran diterima.
+                </p>
+              </div>
               {orderSaveError && (
                 <p className="w-full rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-xs text-red-700">
                   {orderSaveError}
@@ -2000,14 +2183,12 @@ export default function PosPage() {
                 className="flex-1"
                 onClick={() => {
                   setShowMidtransQRModal(false);
-                  setMidtransRedirectUrl("");
-                  setMidtransError("");
                 }}
               >
-                Cancel
+                Batal
               </Button>
               <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
                 disabled={orderSaving}
                 onClick={async () => {
                   const orderCode = activeOrderCode;
@@ -2017,14 +2198,16 @@ export default function PosPage() {
                   }
 
                   try {
-                    await finalizeOrderPayment(orderCode);
+                    const pts = await finalizeOrderPayment(orderCode);
                     setShowMidtransQRModal(false);
-                    setReceiptOrderId(`#${orderCode.slice(-4)}`);
+                    setReceiptOrderId(`#${orderCode}`);
                     setReceiptData({
                       customerName, orderType, tableNumber, paymentMethod, cashAmount,
                       cart: [...cart], subtotal, discount,
                       taxPb1, taxPb1Amount, taxService, taxServiceAmount, taxPpn, taxPpnAmount,
                       taxes, total, change,
+                      isMember,
+                      pointsEarned: pts,
                     });
                     setShowReceiptModal(true);
                     toast.success("Pembayaran berhasil!");
@@ -2034,7 +2217,7 @@ export default function PosPage() {
                   }
                 }}
               >
-                {orderSaving ? "Saving..." : "Payment Complete"}
+                {orderSaving ? "Memproses..." : "Pembayaran Diterima"}
               </Button>
             </div>
           </div>
@@ -2064,6 +2247,7 @@ export default function PosPage() {
                 </label>
                 <Input
                   type="number"
+                  min="1"
                   value={newTableCapacity}
                   onChange={(e) => setNewTableCapacity(e.target.value)}
                   placeholder="e.g., 4"
@@ -2153,6 +2337,9 @@ export default function PosPage() {
                   {item.variant && (
                     <p className="pl-2 text-[10px]">{item.variant}{item.category === "Beverage" && item.sugar && item.sugar !== "-" ? `, ${item.sugar}` : ""}</p>
                   )}
+                  {item.addons.length > 0 && (
+                    <p className="pl-2 text-[10px]">+{item.addons.map(a => a.name).join(", ")}</p>
+                  )}
                   {item.note && (
                     <p className="pl-2 text-[10px] italic">Note: {item.note}</p>
                   )}
@@ -2207,6 +2394,9 @@ export default function PosPage() {
               <p className="mt-2 text-center">*** Thank you ***</p>
               {storeWifiPassword && (
                 <p className="mt-1 text-center">WiFi Pass: {storeWifiPassword}</p>
+              )}
+              {receiptData.isMember && receiptData.pointsEarned > 0 && (
+                <p className="mt-1 text-center font-medium">+{receiptData.pointsEarned} Poin Member</p>
               )}
             </div>
             <div className="flex gap-2">

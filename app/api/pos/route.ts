@@ -9,6 +9,7 @@ type PosOrderItemPayload = {
   price: number;
   qty: number;
   note?: string;
+  addons?: Array<{ name: string; price: number }>;
 };
 
 type PosOrderPayload = {
@@ -207,8 +208,8 @@ export async function PATCH(request: Request) {
 
     await client.query("BEGIN");
 
-    const existing = await client.query<{ id: number; status: "draft" | "open" | "paid" | "cancelled" | "refunded" }>(
-      `SELECT id, status FROM sales_orders WHERE order_code = $1 LIMIT 1`,
+    const existing = await client.query<{ id: number; status: "draft" | "open" | "paid" | "cancelled" | "refunded"; member_id: number | null; total_amount: string; order_code: string }>(
+      `SELECT id, status, member_id, total_amount::text, order_code FROM sales_orders WHERE order_code = $1 LIMIT 1`,
       [body.orderCode]
     );
 
@@ -255,19 +256,19 @@ export async function PATCH(request: Request) {
 
     await client.query(
       `
-        UPDATE order_payments
-        SET status = $1,
-            paid_at = CASE WHEN $1 = 'paid' THEN NOW() ELSE paid_at END,
+        UPDATE order_payments op
+        SET status = $2::varchar(20),
+            paid_at = CASE WHEN $2::text = 'paid' THEN NOW() ELSE op.paid_at END,
             updated_at = NOW()
-        WHERE id = (
+        WHERE op.id = (
           SELECT id
           FROM order_payments
-          WHERE sales_order_id = $2
+          WHERE sales_order_id = $1::bigint
           ORDER BY created_at DESC, id DESC
           LIMIT 1
         )
       `,
-      [body.paymentStatus, row.id]
+      [row.id, body.paymentStatus]
     );
 
     const nextOrderStatus = body.paymentStatus === "paid" ? "paid" : body.paymentStatus === "pending" ? "open" : row.status;
@@ -290,12 +291,65 @@ export async function PATCH(request: Request) {
       [row.id, row.status, nextOrderStatus, body.handledBy || "POS Cashier", `payment:${body.paymentStatus}`]
     );
 
+    // Award points to member when payment is finalized as paid
+    let earnedPointsPatch = 0;
+    if (body.paymentStatus === "paid" && row.member_id) {
+      const pointsSettingResult = await client.query<{ point_per_rupiah: number; point_value: number }>(
+        `SELECT point_per_rupiah, point_value FROM settings WHERE id = 1`
+      );
+      const pointsSetting = pointsSettingResult.rows[0];
+      if (pointsSetting && pointsSetting.point_per_rupiah > 0) {
+        const orderTotal = Number(row.total_amount);
+        const pointsEarned = Math.floor(orderTotal / pointsSetting.point_per_rupiah) * pointsSetting.point_value;
+        earnedPointsPatch = pointsEarned;
+        if (pointsEarned > 0) {
+          // Check if points already awarded for this order (avoid double)
+          const existingPoints = await client.query(
+            `SELECT 1 FROM member_transactions WHERE transaction_code = $1 LIMIT 1`,
+            [row.order_code]
+          );
+          if (existingPoints.rows.length === 0) {
+            // Get item summary
+            const itemsResult = await client.query<{ summary: string }>(
+              `SELECT STRING_AGG(menu_name_snapshot || ' x' || qty::int, ', ') AS summary FROM sales_order_items WHERE sales_order_id = $1`,
+              [row.id]
+            );
+            const itemSummary = itemsResult.rows[0]?.summary || "-";
+
+            const txResult = await client.query<{ id: number }>(
+              `INSERT INTO member_transactions (member_id, transaction_code, transaction_date, item_summary, amount)
+               VALUES ($1, $2, CURRENT_DATE, $3, $4) RETURNING id`,
+              [row.member_id, row.order_code, itemSummary, orderTotal]
+            );
+
+            await client.query(
+              `INSERT INTO member_point_ledger (member_id, transaction_id, entry_type, description, points_delta)
+               VALUES ($1, $2, 'earn', $3, $4)`,
+              [row.member_id, txResult.rows[0].id, `Pembelian ${row.order_code}`, pointsEarned]
+            );
+
+            await client.query(
+              `UPDATE members SET
+                points_balance = points_balance + $1,
+                visit_count = visit_count + 1,
+                total_spending = total_spending + $2,
+                last_visit_at = CURRENT_DATE,
+                updated_at = NOW()
+              WHERE id = $3`,
+              [pointsEarned, orderTotal, row.member_id]
+            );
+          }
+        }
+      }
+    }
+
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true });
-  } catch {
-    await client.query("ROLLBACK");
-    return NextResponse.json({ error: "Failed to update order status" }, { status: 500 });
+    return NextResponse.json({ success: true, pointsEarned: earnedPointsPatch });
+  } catch (err) {
+    try { await client.query("ROLLBACK"); } catch {}
+    const message = err instanceof Error ? err.message : "Failed to update order status";
+    return NextResponse.json({ error: message }, { status: 500 });
   } finally {
     client.release();
   }
@@ -307,7 +361,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PosOrderPayload;
 
-    if (!body.orderCode || !body.customerName || !body.orderType || !body.tableNumber || !body.cashierName) {
+    if (!body.orderCode || !body.customerName || !body.orderType || !body.cashierName) {
       return NextResponse.json({ error: "Invalid order payload" }, { status: 400 });
     }
 
@@ -376,7 +430,7 @@ export async function POST(request: Request) {
       const resolvedMenuId = item.menuId && item.menuId > 0 ? item.menuId : menuMap.get(item.name.toLowerCase()) || null;
       const lineTotal = item.price * item.qty;
 
-      await client.query(
+      const orderItemResult = await client.query<{ id: number }>(
         `
           INSERT INTO sales_order_items (
             sales_order_id,
@@ -389,6 +443,7 @@ export async function POST(request: Request) {
             unit_price,
             line_total
           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id
         `,
         [
           salesOrderId,
@@ -402,6 +457,17 @@ export async function POST(request: Request) {
           lineTotal,
         ]
       );
+
+      // Save addons for this order item
+      if (item.addons && item.addons.length > 0) {
+        const orderItemId = orderItemResult.rows[0].id;
+        for (const addon of item.addons) {
+          await client.query(
+            `INSERT INTO order_item_addons (sales_order_item_id, addon_name, addon_price) VALUES ($1, $2, $3)`,
+            [orderItemId, addon.name, addon.price]
+          );
+        }
+      }
     }
 
     const paymentMethod = body.paymentMethod === "midtrans" ? "qris" : body.paymentMethod;
@@ -444,6 +510,46 @@ export async function POST(request: Request) {
       `,
       [salesOrderId, null, orderStatus, body.cashierName, "kanban:Queue"]
     );
+
+    // Award points to member if order is paid
+    let earnedPoints = 0;
+    if (body.paymentStatus === "paid" && memberId) {
+      const pointsSettingResult = await client.query<{ point_per_rupiah: number; point_value: number }>(
+        `SELECT point_per_rupiah, point_value FROM settings WHERE id = 1`
+      );
+      const pointsSetting = pointsSettingResult.rows[0];
+      if (pointsSetting && pointsSetting.point_per_rupiah > 0) {
+        const pointsEarned = Math.floor(body.total / pointsSetting.point_per_rupiah) * pointsSetting.point_value;
+        earnedPoints = pointsEarned;
+        if (pointsEarned > 0) {
+          // Record member transaction
+          const txResult = await client.query<{ id: number }>(
+            `INSERT INTO member_transactions (member_id, transaction_code, transaction_date, item_summary, amount)
+             VALUES ($1, $2, CURRENT_DATE, $3, $4) RETURNING id`,
+            [memberId, body.orderCode, body.items.map(i => `${i.name} x${i.qty}`).join(", "), body.total]
+          );
+
+          // Record point ledger entry
+          await client.query(
+            `INSERT INTO member_point_ledger (member_id, transaction_id, entry_type, description, points_delta)
+             VALUES ($1, $2, 'earn', $3, $4)`,
+            [memberId, txResult.rows[0].id, `Pembelian ${body.orderCode}`, pointsEarned]
+          );
+
+          // Update member balance, visit count, total spending
+          await client.query(
+            `UPDATE members SET
+              points_balance = points_balance + $1,
+              visit_count = visit_count + 1,
+              total_spending = total_spending + $2,
+              last_visit_at = CURRENT_DATE,
+              updated_at = NOW()
+            WHERE id = $3`,
+            [pointsEarned, body.total, memberId]
+          );
+        }
+      }
+    }
 
     // Deduct ingredient stock based on menu recipes
     const orderedMenuIds = body.items
@@ -516,7 +622,7 @@ export async function POST(request: Request) {
 
     await client.query("COMMIT");
 
-    return NextResponse.json({ success: true, salesOrderId, orderCode: body.orderCode });
+    return NextResponse.json({ success: true, salesOrderId, orderCode: body.orderCode, pointsEarned: earnedPoints });
   } catch (error) {
     await client.query("ROLLBACK");
 

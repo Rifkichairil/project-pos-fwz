@@ -212,6 +212,8 @@ export default function InventoryPage() {
       supplier: newIngredient.supplier,
       stock: Number(newIngredient.stock) || 0,
       minStock: Number(newIngredient.minStock) || 0,
+      in30d: 0,
+      out30d: 0,
     }]);
     closeAllModals();
   };

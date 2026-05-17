@@ -15,8 +15,11 @@ import {
   Trash2,
   ChevronLeft,
   ChevronRight,
+  Package,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 interface IngredientPrice {
   unit: string;
@@ -44,6 +47,7 @@ interface Product {
   category: string;
   hpp: number;
   price: number;
+  addons?: Array<{ id: number; name: string; price: number }>;
 }
 
 interface MenuApiResponse {
@@ -74,7 +78,7 @@ function calcMargin(hpp: number, price: number) {
 
 export default function MenuRecipePage() {
   const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState<"recipe" | "pricing">("recipe");
+  const [activeTab, setActiveTab] = useState<"recipe" | "pricing" | "addon">("recipe");
   const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -92,6 +96,26 @@ export default function MenuRecipePage() {
     category: "Main Dish",
     price: "",
     ingredients: [{ name: "", qty: "", unit: "" }] as { name: string; qty: string; unit: string }[],
+    addonIds: [] as number[],
+  });
+
+  // Addon master data
+  const [addonsData, setAddonsData] = useState<Array<{ id: number; name: string; price: number }>>([]);
+  const [showAddAddon, setShowAddAddon] = useState(false);
+  const [newAddonName, setNewAddonName] = useState("");
+  const [newAddonPrice, setNewAddonPrice] = useState("");
+  const [addonPage, setAddonPage] = useState(1);
+  const addonPerPage = 8;
+
+  // Edit menu state
+  const [showEditMenu, setShowEditMenu] = useState(false);
+  const [editMenu, setEditMenu] = useState({
+    id: 0,
+    name: "",
+    category: "Main Dish",
+    price: "",
+    ingredients: [{ name: "", qty: "", unit: "" }] as { name: string; qty: string; unit: string }[],
+    addonIds: [] as number[],
   });
 
   const filteredRecipes = recipesData.filter((r) =>
@@ -112,12 +136,14 @@ export default function MenuRecipePage() {
 
   const loadMenuData = useCallback(async () => {
     try {
-      const response = await fetch("/api/menu", { cache: "no-store" });
-      if (!response.ok) {
-        throw new Error("Failed to fetch menu data");
-      }
+      const [menuRes, addonsRes] = await Promise.all([
+        fetch("/api/menu", { cache: "no-store" }),
+        fetch("/api/addons", { cache: "no-store" }),
+      ]);
 
-      const data = (await response.json()) as MenuApiResponse;
+      if (!menuRes.ok) throw new Error("Failed to fetch menu data");
+
+      const data = (await menuRes.json()) as MenuApiResponse;
       setRecipesData(data.recipes);
       setProductsData(data.products);
       setIngredientPrices(
@@ -140,6 +166,12 @@ export default function MenuRecipePage() {
         }
         return latestRecipe;
       });
+
+      if (addonsRes.ok) {
+        const addonsJson = (await addonsRes.json()) as { addons: Array<{ id: number; name: string; price: number }> };
+        setAddonsData(addonsJson.addons || []);
+      }
+
       setErrorMessage("");
     } catch {
       setErrorMessage("Failed to load menu data");
@@ -156,7 +188,15 @@ export default function MenuRecipePage() {
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowAddMenu(false);
+      if (e.key === "Escape") {
+        setShowAddMenu(false);
+        setShowEditMenu(false);
+        setShowAddAddon(false);
+        setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
+        setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
+        setNewAddonName("");
+        setNewAddonPrice("");
+      }
     };
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
@@ -185,6 +225,7 @@ export default function MenuRecipePage() {
           category: newMenu.category,
           price: Number(newMenu.price),
           ingredients: validIngredients,
+          addonIds: newMenu.addonIds,
         }),
       });
 
@@ -202,6 +243,7 @@ export default function MenuRecipePage() {
         category: "Main Dish",
         price: "",
         ingredients: [{ name: "", qty: "", unit: "" }],
+        addonIds: [],
       });
       setShowAddMenu(false);
     } catch {
@@ -228,6 +270,127 @@ export default function MenuRecipePage() {
       setNewMenu({ ...newMenu, ingredients: [{ name: "", qty: "", unit: "" }] });
     } else {
       setNewMenu({ ...newMenu, ingredients: updated });
+    }
+  };
+
+  const handleAddAddon = async () => {
+    if (!newAddonName.trim()) return;
+    try {
+      const res = await fetch("/api/addons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newAddonName.trim(), price: Number(newAddonPrice) || 0 }),
+      });
+      const data = await res.json() as { error?: string; addon?: { id: number; name: string; price: number } };
+      if (!res.ok) {
+        toast.error(data.error || "Gagal menambah addon");
+        return;
+      }
+      if (data.addon) {
+        setAddonsData((prev) => [...prev, data.addon!]);
+      }
+      setNewAddonName("");
+      setNewAddonPrice("");
+      setShowAddAddon(false);
+      toast.success("Addon berhasil ditambahkan!");
+    } catch {
+      toast.error("Gagal menambah addon");
+    }
+  };
+
+  const handleDeleteAddon = async (id: number) => {
+    try {
+      const res = await fetch(`/api/addons?id=${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast.error("Gagal menghapus addon");
+        return;
+      }
+      setAddonsData((prev) => prev.filter((a) => a.id !== id));
+      toast.success("Addon dihapus");
+    } catch {
+      toast.error("Gagal menghapus addon");
+    }
+  };
+
+  const openEditMenu = (recipe: Recipe) => {
+    const product = productsData.find((p) => p.id === recipe.id);
+    setEditMenu({
+      id: recipe.id,
+      name: recipe.name,
+      category: recipe.category,
+      price: product?.price?.toString() || "",
+      ingredients: recipe.ingredients.map((ing) => ({
+        name: ing.name,
+        qty: ing.qty.toString(),
+        unit: ing.unit,
+      })),
+      addonIds: product?.addons?.map((a) => a.id) || [],
+    });
+    setShowEditMenu(true);
+  };
+
+  const updateEditIngredient = (index: number, field: "name" | "qty" | "unit", value: string) => {
+    const updated = [...editMenu.ingredients];
+    updated[index] = { ...updated[index], [field]: value };
+    if (field === "name" && value) {
+      updated[index].unit = ingredientPrices[value]?.unit || "";
+    }
+    setEditMenu({ ...editMenu, ingredients: updated });
+  };
+
+  const addEditIngredientRow = () => {
+    setEditMenu({ ...editMenu, ingredients: [...editMenu.ingredients, { name: "", qty: "", unit: "" }] });
+  };
+
+  const removeEditIngredientRow = (index: number) => {
+    const updated = editMenu.ingredients.filter((_, i) => i !== index);
+    if (updated.length === 0) {
+      setEditMenu({ ...editMenu, ingredients: [{ name: "", qty: "", unit: "" }] });
+    } else {
+      setEditMenu({ ...editMenu, ingredients: updated });
+    }
+  };
+
+  const handleEditMenu = async () => {
+    if (!editMenu.name || !editMenu.price) return;
+
+    const validIngredients = editMenu.ingredients
+      .filter((ing) => ing.name && ing.qty)
+      .map((ing) => ({
+        name: ing.name,
+        qty: Number(ing.qty),
+        unit: ing.unit || ingredientPrices[ing.name]?.unit || "pcs",
+      }))
+      .filter((ing) => Number.isFinite(ing.qty) && ing.qty > 0);
+
+    if (validIngredients.length === 0) return;
+
+    try {
+      const response = await fetch("/api/menu", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: editMenu.id,
+          name: editMenu.name,
+          category: editMenu.category,
+          price: Number(editMenu.price),
+          ingredients: validIngredients,
+          addonIds: editMenu.addonIds,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        toast.error(data.error || "Failed to update menu");
+        return;
+      }
+
+      toast.success("Menu updated successfully!");
+      setShowEditMenu(false);
+      setIsLoading(true);
+      await loadMenuData();
+    } catch {
+      toast.error("Failed to update menu");
     }
   };
 
@@ -276,6 +439,17 @@ export default function MenuRecipePage() {
           )}
         >
           Menu Pricing
+        </button>
+        <button
+          onClick={() => setActiveTab("addon")}
+          className={cn(
+            "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-all duration-200 hover:scale-105 active:scale-95",
+            activeTab === "addon"
+              ? "bg-primary/10 text-primary"
+              : "text-muted-foreground hover:bg-muted hover:text-foreground"
+          )}
+        >
+          <Package className="mr-1.5 inline size-3.5" /> Addon
         </button>
       </div>
 
@@ -335,6 +509,14 @@ export default function MenuRecipePage() {
                               <p className="text-[10px] text-muted-foreground">HPP</p>
                               <p className="text-sm font-bold">{formatRp(hpp)}</p>
                             </div>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openEditMenu(recipe); }}
+                              className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                              title="Edit menu"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
                           </CardContent>
                         </Card>
                       );
@@ -438,7 +620,7 @@ export default function MenuRecipePage() {
                 </aside>
               </div>
             </>
-          ) : (
+          ) : activeTab === "pricing" ? (
             <>
               {/* ─── Menu Pricing ─── */}
               <div className="p-4 sm:p-6">
@@ -541,6 +723,114 @@ export default function MenuRecipePage() {
                 </Card>
               </div>
             </>
+          ) : null}
+
+          {/* ─── Addon Master Data ─── */}
+          {activeTab === "addon" && (
+            <div className="p-4 sm:p-6">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-semibold">Master Data Addon</CardTitle>
+                  <Button size="sm" className="h-8 gap-1.5 text-xs" onClick={() => setShowAddAddon(true)}>
+                    <Plus className="size-3.5" /> Tambah Addon
+                  </Button>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead>
+                        <tr className="border-b text-muted-foreground">
+                          <th className="pb-2 font-medium">Nama Addon</th>
+                          <th className="pb-2 font-medium">Harga</th>
+                          <th className="pb-2 font-medium text-center">Aksi</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {addonsData.length === 0 ? (
+                          <tr><td colSpan={3} className="py-6 text-center text-muted-foreground">Belum ada addon</td></tr>
+                        ) : (
+                          addonsData
+                            .filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+                            .slice((addonPage - 1) * addonPerPage, addonPage * addonPerPage)
+                            .map((addon) => (
+                            <tr key={addon.id} className="hover:bg-muted/30">
+                              <td className="py-2.5 font-medium">{addon.name}</td>
+                              <td className="py-2.5">Rp. {addon.price.toLocaleString("id-ID")}</td>
+                              <td className="py-2.5 text-center">
+                                <button
+                                  onClick={() => handleDeleteAddon(addon.id)}
+                                  className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600"
+                                  title="Hapus addon"
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  {(() => {
+                    const filteredAddons = addonsData.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()));
+                    const totalAddonPages = Math.max(1, Math.ceil(filteredAddons.length / addonPerPage));
+                    if (filteredAddons.length <= addonPerPage) return null;
+                    return (
+                      <div className="mt-4 flex items-center justify-between">
+                        <span className="text-xs text-muted-foreground">
+                          Showing {(addonPage - 1) * addonPerPage + 1}–{Math.min(addonPage * addonPerPage, filteredAddons.length)} of {filteredAddons.length}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={addonPage <= 1} onClick={() => setAddonPage(addonPage - 1)}>
+                            <ChevronLeft className="size-3.5" />
+                          </Button>
+                          {Array.from({ length: totalAddonPages }, (_, i) => i + 1).map((page) => (
+                            <Button
+                              key={page}
+                              variant={addonPage === page ? "default" : "outline"}
+                              size="sm"
+                              className={cn("h-7 min-w-[28px] px-1.5 text-xs", addonPage === page ? "bg-slate-600 hover:bg-slate-700" : "")}
+                              onClick={() => setAddonPage(page)}
+                            >
+                              {page}
+                            </Button>
+                          ))}
+                          <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={addonPage >= totalAddonPages} onClick={() => setAddonPage(addonPage + 1)}>
+                            <ChevronRight className="size-3.5" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
+              {/* Add Addon Modal */}
+              {showAddAddon && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="w-full max-w-sm rounded-xl bg-background p-6 shadow-xl">
+                    <div className="mb-4 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold">Tambah Addon</h3>
+                      <button onClick={() => { setShowAddAddon(false); setNewAddonName(""); setNewAddonPrice(""); }} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nama Addon</Label>
+                        <Input value={newAddonName} onChange={(e) => setNewAddonName(e.target.value)} placeholder="e.g. Extra Telur" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Harga</Label>
+                        <Input type="number" value={newAddonPrice} onChange={(e) => setNewAddonPrice(e.target.value)} placeholder="e.g. 5000" min="0" />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <Button variant="outline" className="flex-1" onClick={() => { setShowAddAddon(false); setNewAddonName(""); setNewAddonPrice(""); }}>Batal</Button>
+                        <Button className="flex-1" onClick={handleAddAddon}>Simpan</Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -550,7 +840,7 @@ export default function MenuRecipePage() {
           <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-background shadow-lg">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Add Menu</h2>
-              <button onClick={() => setShowAddMenu(false)} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
@@ -577,7 +867,7 @@ export default function MenuRecipePage() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-xs font-medium">Selling Price</Label>
-                    <Input placeholder="e.g. 35000" type="number" value={newMenu.price} onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })} />
+                    <Input placeholder="e.g. 35000" type="number" min="1" value={newMenu.price} onChange={(e) => setNewMenu({ ...newMenu, price: e.target.value })} />
                   </div>
                 </div>
 
@@ -601,7 +891,7 @@ export default function MenuRecipePage() {
                             <option key={name} value={name}>{name}</option>
                           ))}
                         </select>
-                        <Input placeholder="Qty" type="number" value={ing.qty} onChange={(e) => updateIngredient(idx, "qty", e.target.value)} />
+                        <Input placeholder="Qty" type="number" min="1" value={ing.qty} onChange={(e) => updateIngredient(idx, "qty", e.target.value)} />
                         <Input placeholder="Unit" value={ing.unit} onChange={(e) => updateIngredient(idx, "unit", e.target.value)} />
                         <button
                           type="button"
@@ -613,12 +903,174 @@ export default function MenuRecipePage() {
                       </div>
                     ))}
                   </div>
+                  {(() => {
+                    const hpp = newMenu.ingredients.reduce((sum, ing) => {
+                      if (!ing.name || !ing.qty) return sum;
+                      const price = ingredientPrices[ing.name]?.price ?? 0;
+                      return sum + price * Number(ing.qty);
+                    }, 0);
+                    return hpp > 0 ? (
+                      <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Estimasi HPP</span>
+                        <span className="text-xs font-semibold">{formatRp(hpp)}</span>
+                      </div>
+                    ) : null;
+                  })()}
                 </div>
+
+                {/* Addon Selection */}
+                {addonsData.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Addon (opsional)</Label>
+                  <div className="max-h-32 overflow-y-auto space-y-1 rounded-lg border p-2">
+                    {addonsData.map((addon) => (
+                      <label key={addon.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          checked={newMenu.addonIds.includes(addon.id)}
+                          onChange={() => {
+                            setNewMenu((prev) => ({
+                              ...prev,
+                              addonIds: prev.addonIds.includes(addon.id)
+                                ? prev.addonIds.filter((id) => id !== addon.id)
+                                : [...prev.addonIds, addon.id],
+                            }));
+                          }}
+                          className="size-3.5 rounded border-border"
+                        />
+                        <span className="flex-1 text-xs">{addon.name}</span>
+                        <span className="text-xs text-muted-foreground">+Rp. {addon.price.toLocaleString("id-ID")}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                )}
               </div>
             </div>
             <div className="flex gap-2 border-t px-6 py-4">
-              <Button variant="outline" className="flex-1" onClick={() => setShowAddMenu(false)}>Cancel</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
               <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleAddMenu}>Save</Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Menu Modal */}
+      {showEditMenu && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-background shadow-lg">
+            <div className="flex items-center justify-between border-b px-6 py-4">
+              <h2 className="text-lg font-semibold">Edit Menu</h2>
+              <button onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
+                <X className="size-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Name</Label>
+                  <Input placeholder="e.g. Nasi Goreng" value={editMenu.name} onChange={(e) => setEditMenu({ ...editMenu, name: e.target.value })} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Category</Label>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                      value={editMenu.category}
+                      onChange={(e) => setEditMenu({ ...editMenu, category: e.target.value })}
+                    >
+                      <option value="Main Dish">Main Dish</option>
+                      <option value="Beverage">Beverage</option>
+                      <option value="Appetizer">Appetizer</option>
+                      <option value="Snack">Snack</option>
+                      <option value="Dessert">Dessert</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs font-medium">Selling Price</Label>
+                    <Input placeholder="e.g. 35000" type="number" min="1" value={editMenu.price} onChange={(e) => setEditMenu({ ...editMenu, price: e.target.value })} />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-medium">Ingredients</Label>
+                    <Button type="button" variant="outline" size="sm" className="h-7 gap-1 text-xs" onClick={addEditIngredientRow}>
+                      <Plus className="size-3" /> Add
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    {editMenu.ingredients.map((ing, idx) => (
+                      <div key={idx} className="grid grid-cols-[1fr_80px_80px_32px] gap-2">
+                        <select
+                          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm"
+                          value={ing.name}
+                          onChange={(e) => updateEditIngredient(idx, "name", e.target.value)}
+                        >
+                          <option value="">Select ingredient...</option>
+                          {Object.keys(ingredientPrices).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                        <Input placeholder="Qty" type="number" min="1" value={ing.qty} onChange={(e) => updateEditIngredient(idx, "qty", e.target.value)} />
+                        <Input placeholder="Unit" value={ing.unit} onChange={(e) => updateEditIngredient(idx, "unit", e.target.value)} />
+                        <button
+                          type="button"
+                          onClick={() => removeEditIngredientRow(idx)}
+                          className="flex h-9 items-center justify-center rounded-md border border-border text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {(() => {
+                    const hpp = editMenu.ingredients.reduce((sum, ing) => {
+                      if (!ing.name || !ing.qty) return sum;
+                      const price = ingredientPrices[ing.name]?.price ?? 0;
+                      return sum + price * Number(ing.qty);
+                    }, 0);
+                    return hpp > 0 ? (
+                      <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2">
+                        <span className="text-xs text-muted-foreground">Estimasi HPP</span>
+                        <span className="text-xs font-semibold">{formatRp(hpp)}</span>
+                      </div>
+                    ) : null;
+                  })()}
+                </div>
+
+                {/* Addon Selection */}
+                {addonsData.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-medium">Addon (opsional)</Label>
+                  <div className="max-h-32 overflow-y-auto space-y-1 rounded-lg border p-2">
+                    {addonsData.map((addon) => (
+                      <label key={addon.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 hover:bg-muted/50">
+                        <input
+                          type="checkbox"
+                          checked={editMenu.addonIds.includes(addon.id)}
+                          onChange={() => {
+                            setEditMenu((prev) => ({
+                              ...prev,
+                              addonIds: prev.addonIds.includes(addon.id)
+                                ? prev.addonIds.filter((id) => id !== addon.id)
+                                : [...prev.addonIds, addon.id],
+                            }));
+                          }}
+                          className="size-3.5 rounded border-border"
+                        />
+                        <span className="flex-1 text-xs">{addon.name}</span>
+                        <span className="text-xs text-muted-foreground">+Rp. {addon.price.toLocaleString("id-ID")}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2 border-t px-6 py-4">
+              <Button variant="outline" className="flex-1" onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
+              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleEditMenu}>Save Changes</Button>
             </div>
           </div>
         </div>

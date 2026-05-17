@@ -1,0 +1,5 @@
+BEGIN;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS point_value INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS point_per_rupiah INTEGER NOT NULL DEFAULT 10000;
+UPDATE settings SET point_value = 1, point_per_rupiah = 10000 WHERE id = 1;
+COMMIT;

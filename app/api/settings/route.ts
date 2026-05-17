@@ -11,6 +11,10 @@ type SettingsRow = {
   service_rate: string;
   ppn_enabled: boolean;
   ppn_rate: string;
+  qris_image_url: string;
+  inventory_policy: string;
+  point_value: string;
+  point_per_rupiah: string;
 };
 
 type UpdatePayload = {
@@ -23,12 +27,16 @@ type UpdatePayload = {
   serviceRate?: number | string;
   ppnEnabled?: boolean;
   ppnRate?: number | string;
+  qrisImageUrl?: string;
+  inventoryPolicy?: string;
+  pointValue?: number | string;
+  pointPerRupiah?: number | string;
 };
 
 export async function GET() {
   try {
     const result = await db.query<SettingsRow>(
-      `SELECT store_name, address, wifi_password, pb1_enabled, pb1_rate, service_enabled, service_rate, ppn_enabled, ppn_rate FROM settings WHERE id = 1`
+      `SELECT store_name, address, wifi_password, pb1_enabled, pb1_rate, service_enabled, service_rate, ppn_enabled, ppn_rate, qris_image_url, inventory_policy, point_value, point_per_rupiah FROM settings WHERE id = 1`
     );
 
     if (result.rows.length === 0) {
@@ -42,6 +50,10 @@ export async function GET() {
         serviceRate: 5,
         ppnEnabled: false,
         ppnRate: 11,
+        qrisImageUrl: "",
+        inventoryPolicy: "medium",
+        pointValue: 1,
+        pointPerRupiah: 1000,
       });
     }
 
@@ -56,6 +68,10 @@ export async function GET() {
       serviceRate: Number(row.service_rate),
       ppnEnabled: row.ppn_enabled,
       ppnRate: Number(row.ppn_rate),
+      qrisImageUrl: row.qris_image_url,
+      inventoryPolicy: row.inventory_policy,
+      pointValue: Number(row.point_value),
+      pointPerRupiah: Number(row.point_per_rupiah),
     });
   } catch {
     return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
@@ -75,6 +91,10 @@ export async function PUT(request: Request) {
     const serviceRate = Number(body.serviceRate) || 0;
     const ppnEnabled = body.ppnEnabled ?? false;
     const ppnRate = Number(body.ppnRate) || 0;
+    const qrisImageUrl = body.qrisImageUrl ?? "";
+    const inventoryPolicy = ["strict", "medium", "off"].includes(body.inventoryPolicy || "") ? body.inventoryPolicy : "medium";
+    const pointValue = Number(body.pointValue) || 1;
+    const pointPerRupiah = Number(body.pointPerRupiah) || 1000;
 
     await db.query(
       `UPDATE settings SET
@@ -87,9 +107,13 @@ export async function PUT(request: Request) {
         service_rate = $7,
         ppn_enabled = $8,
         ppn_rate = $9,
+        qris_image_url = $10,
+        inventory_policy = $11,
+        point_value = $12,
+        point_per_rupiah = $13,
         updated_at = NOW()
       WHERE id = 1`,
-      [storeName, address, wifiPassword, pb1Enabled, pb1Rate, serviceEnabled, serviceRate, ppnEnabled, ppnRate]
+      [storeName, address, wifiPassword, pb1Enabled, pb1Rate, serviceEnabled, serviceRate, ppnEnabled, ppnRate, qrisImageUrl, inventoryPolicy, pointValue, pointPerRupiah]
     );
 
     return NextResponse.json({ success: true });

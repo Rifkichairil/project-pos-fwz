@@ -30,8 +30,10 @@ import {
   Eye,
   Printer,
   X,
+  CheckCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import toast from "react-hot-toast";
 
 interface Transaction {
   id: string;
@@ -199,6 +201,25 @@ export default function TransactionsPage() {
       setLoading(false);
     }
   }, []);
+
+  const confirmQrisPayment = async (orderCode: string) => {
+    try {
+      const res = await fetch("/api/pos", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderCode, paymentStatus: "paid", handledBy: "POS Cashier" }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error || "Gagal update status");
+        return;
+      }
+      toast.success("Pembayaran QRIS dikonfirmasi!");
+      void loadTransactions(false);
+    } catch {
+      toast.error("Gagal update status pembayaran");
+    }
+  };
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -465,6 +486,15 @@ export default function TransactionsPage() {
                         <td className="py-2.5">{orderStatusBadge(t.orderStatus)}</td>
                         <td className="py-2.5">
                           <div className="flex items-center justify-center gap-1">
+                            {t.method === "QRIS" && t.paymentStatus === "Pending" && (
+                              <button
+                                onClick={() => confirmQrisPayment(t.id)}
+                                className="rounded p-1 text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600"
+                                title="Konfirmasi pembayaran"
+                              >
+                                <CheckCircle className="size-3.5" />
+                              </button>
+                            )}
                             <button
                               onClick={() => setSelectedTx(t)}
                               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -611,7 +641,7 @@ export default function TransactionsPage() {
               </div>
               <div className="flex justify-between">
                 <span>Order</span>
-                <span>#{selectedTx.id.slice(-4)}</span>
+                <span>{selectedTx.id}</span>
               </div>
               <div className="flex justify-between">
                 <span>Date</span>

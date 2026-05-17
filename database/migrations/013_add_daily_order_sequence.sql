@@ -1,0 +1,8 @@
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS daily_order_sequence (
+  order_date DATE NOT NULL PRIMARY KEY,
+  last_seq INTEGER NOT NULL DEFAULT 0
+);
+
+COMMIT;
