@@ -1109,7 +1109,7 @@ export default function PosPage() {
             className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
           >
             {filteredMenu.map((item) => (
-              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", item.soldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-orange-300 border-2" : "border border-border/40")}>
+              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", item.soldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-teal-400 border-2" : "border border-border/40")}>
                 <div className="relative flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
                   {item.soldOut && (
                     <Badge variant="outline" className="absolute top-2 right-2 border-red-300 bg-red-100 text-[9px] text-red-700 px-1.5 py-0.5">
