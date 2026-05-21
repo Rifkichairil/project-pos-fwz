@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,10 +7,20 @@ import { Eye } from "lucide-react";
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen w-full">
-      {/* Left Side - Login Form */}
-      <div className="flex w-full flex-col justify-center px-6 py-12 md:w-1/2 md:px-16 lg:px-24">
-        <div className="mx-auto w-full max-w-sm">
+    <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
+      {/* Decorative blobs - top left */}
+      <div className="absolute -left-20 -top-20 size-72 rounded-full bg-primary/20 blur-sm" />
+      <div className="absolute left-16 top-10 size-48 rounded-full bg-primary/15" />
+      <div className="absolute -left-5 top-32 size-36 rounded-full bg-primary/10" />
+
+      {/* Decorative blobs - bottom right */}
+      <div className="absolute -bottom-16 -right-16 size-64 rounded-full bg-primary/20 blur-sm" />
+      <div className="absolute bottom-8 right-20 size-44 rounded-full bg-primary/15" />
+      <div className="absolute bottom-28 -right-4 size-32 rounded-full bg-primary/10" />
+
+      {/* Login Form - Centered */}
+      <div className="relative z-10 mx-4 w-full max-w-sm rounded-xl border bg-background/80 p-8 shadow-lg backdrop-blur-sm sm:mx-0">
+        <div className="mx-auto w-full">
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Login
           </h1>
@@ -134,20 +143,6 @@ export default function LoginPage() {
               Privacy Policy
             </Link>
           </p>
-        </div>
-      </div>
-
-      {/* Right Side - Food Image */}
-      <div className="relative hidden w-1/2 md:block">
-        <div className="absolute inset-0 bg-muted">
-          <Image
-            src="/food.jpg"
-            alt="Delicious food"
-            fill
-            className="object-cover"
-            priority
-          />
-          <div className="absolute inset-0 bg-black/10" />
         </div>
       </div>
     </div>

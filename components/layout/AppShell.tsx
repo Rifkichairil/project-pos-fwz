@@ -17,6 +17,7 @@ import {
   X,
   Menu,
   Receipt,
+  UserCog,
 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
@@ -27,6 +28,7 @@ const navItems = [
   { icon: Receipt, label: "Transactions", href: "/transactions" },
   { icon: Users, label: "Member", href: "/member" },
   { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
+  { icon: UserCog, label: "User", href: "/user" },
 ];
 
 const bottomNav = [

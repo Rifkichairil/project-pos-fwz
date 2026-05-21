@@ -479,10 +479,10 @@ export default function MenuRecipePage() {
           {activeTab === "recipe" ? (
             <>
               {/* ─── Recipe / BOM ─── */}
-              <div className="flex h-full overflow-hidden">
+              <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Left — Recipe Cards */}
-                <div className="flex flex-1 flex-col overflow-y-auto px-4 sm:px-6">
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 min-[1500px]:grid-cols-3">
+                <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-4">
                     {filteredRecipes.map((recipe, index) => {
                       const hpp = calcHPP(recipe.ingredients, ingredientPrices);
                       return (
@@ -494,29 +494,28 @@ export default function MenuRecipePage() {
                           }`}
                           style={{ animationDelay: `${200 + index * 50}ms` }}
                         >
-                          <CardContent className="flex items-center gap-3 p-3">
-                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                              <Calculator className="size-4 text-primary" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold">{recipe.name}</p>
-                              <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-                                <span>{recipe.category}</span>
-                                <span>· {recipe.ingredients.length} ingredients</span>
+                          <CardContent className="p-3">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                                <Calculator className="size-4 text-primary" />
                               </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-semibold">{recipe.name}</p>
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-muted-foreground">
+                                  <span>{recipe.category}</span>
+                                  <span>· {recipe.ingredients.length} bahan</span>
+                                </div>
+                                <p className="mt-1 text-xs font-bold"><span className="font-normal text-muted-foreground">HPP </span>{formatRp(hpp)}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); openEditMenu(recipe); }}
+                                className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                                title="Edit menu"
+                              >
+                                <Pencil className="size-3" />
+                              </button>
                             </div>
-                            <div className="shrink-0 text-right">
-                              <p className="text-[10px] text-muted-foreground">HPP</p>
-                              <p className="text-sm font-bold">{formatRp(hpp)}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); openEditMenu(recipe); }}
-                              className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                              title="Edit menu"
-                            >
-                              <Pencil className="size-3.5" />
-                            </button>
                           </CardContent>
                         </Card>
                       );
@@ -527,15 +526,15 @@ export default function MenuRecipePage() {
                 {/* Mobile Overlay */}
                 {selectedRecipe && sidebarOpen && (
                   <div
-                    className="fixed inset-0 z-40 bg-black/50 min-[1300px]:hidden"
+                    className="fixed inset-0 z-40 bg-black/50 min-[1570px]:hidden"
                     onClick={() => setSidebarOpen(false)}
                   />
                 )}
                 {/* Right — Recipe Detail Sidebar */}
                 <aside
                   className={cn(
-                    "w-[32rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1300px]:static min-[1300px]:translate-x-0 min-[1300px]:z-auto",
-                    sidebarOpen ? "translate-x-0" : "translate-x-full min-[1300px]:translate-x-0"
+                    "w-[32rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1570px]:static min-[1570px]:translate-x-0 min-[1570px]:z-auto",
+                    sidebarOpen ? "translate-x-0" : "translate-x-full min-[1570px]:translate-x-0"
                   )}
                 >
                   {selectedRecipe ? (
@@ -556,7 +555,7 @@ export default function MenuRecipePage() {
                         </div>
                         <button
                           onClick={() => setSidebarOpen(false)}
-                          className="min-[1300px]:hidden flex size-8 items-center justify-center rounded-lg border"
+                          className="min-[1570px]:hidden flex size-8 items-center justify-center rounded-lg border"
                         >
                           <X className="size-4" />
                         </button>
