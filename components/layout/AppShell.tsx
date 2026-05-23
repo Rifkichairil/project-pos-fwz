@@ -2,8 +2,8 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -18,27 +18,73 @@ import {
   Menu,
   Receipt,
   UserCog,
+  Building2,
+  LogOut,
 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 
-const navItems = [
-  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard" },
-  { icon: UtensilsCrossed, label: "Menu Order", href: "/pos" },
-  { icon: Package, label: "Inventory", href: "/inventory" },
-  { icon: Receipt, label: "Transactions", href: "/transactions" },
-  { icon: Users, label: "Member", href: "/member" },
-  { icon: BookOpen, label: "Menu & Recipe", href: "/menu" },
-  { icon: UserCog, label: "User", href: "/user" },
+const allNavItems = [
+  { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ["admin", "manager"] },
+  { icon: UtensilsCrossed, label: "Menu Order", href: "/pos", roles: ["admin", "manager", "cashier"] },
+  { icon: Package, label: "Inventory", href: "/inventory", roles: ["admin", "manager"] },
+  { icon: Receipt, label: "Transactions", href: "/transactions", roles: ["admin", "manager"] },
+  { icon: Users, label: "Member", href: "/member", roles: ["admin", "manager"] },
+  { icon: BookOpen, label: "Menu & Recipe", href: "/menu", roles: ["admin", "manager"] },
+  { icon: UserCog, label: "User", href: "/user", roles: ["admin", "manager"] },
+  { icon: Building2, label: "Tenant", href: "/tenant", roles: ["admin"] },
 ];
 
 const bottomNav = [
-  { icon: Settings, label: "Settings", href: "/settings" },
-  { icon: HelpCircle, label: "Help Center", href: "#" },
+  { icon: Settings, label: "Settings", href: "/settings", roles: ["admin", "manager"] },
+  { icon: HelpCircle, label: "Help Center", href: "#", roles: ["admin", "manager", "cashier"] },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; tenantId: number | null; tenantName: string | null } | null>(null);
+  const [tenants, setTenants] = useState<{ id: number; name: string }[]>([]);
+  const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data?.name) setCurrentUser({ name: data.name, email: data.email, role: data.role, tenantId: data.tenantId ?? null, tenantName: data.tenantName ?? null }); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.role === "admin") {
+      fetch("/api/tenants")
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => { if (data?.tenants) setTenants(data.tenants.map((t: { id: number; name: string }) => ({ id: t.id, name: t.name }))); })
+        .catch(() => {});
+    }
+  }, [currentUser?.role]);
+
+  const handleSwitchTenant = async (tenantId: number) => {
+    try {
+      const res = await fetch("/api/auth/switch-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId }),
+      });
+      if (res.ok) {
+        setShowTenantSwitcher(false);
+        window.location.reload();
+      }
+    } catch {}
+  };
+
+  const userRole = currentUser?.role || "cashier";
+  const navItems = allNavItems.filter((item) => item.roles.includes(userRole));
+  const visibleBottomNav = bottomNav.filter((item) => item.roles.includes(userRole));
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/");
+  };
   return (
     <div className="flex h-screen w-full bg-background">
       {/* Mobile Overlay */}
@@ -69,6 +115,39 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
+        {/* Tenant Switcher (Admin only) */}
+        {currentUser?.role === "admin" && tenants.length > 0 && (
+          <div className="relative mx-3 mb-2">
+            <button
+              onClick={() => setShowTenantSwitcher(!showTenantSwitcher)}
+              className="flex w-full items-center justify-between rounded-lg border bg-muted/50 px-3 py-2 text-xs font-medium transition-colors hover:bg-muted"
+            >
+              <div className="flex items-center gap-2">
+                <Building2 className="size-3.5 text-muted-foreground" />
+                <span className="truncate">{currentUser.tenantName || "No Tenant"}</span>
+              </div>
+              <ChevronDown className={cn("size-3.5 text-muted-foreground transition-transform", showTenantSwitcher && "rotate-180")} />
+            </button>
+            {showTenantSwitcher && (
+              <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border bg-background py-1 shadow-lg">
+                {tenants.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => handleSwitchTenant(t.id)}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-3 py-2 text-xs transition-colors hover:bg-muted",
+                      currentUser.tenantId === t.id && "bg-primary/10 font-medium text-primary"
+                    )}
+                  >
+                    <Building2 className="size-3 text-muted-foreground" />
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Nav */}
         <nav className="flex-1 space-y-0.5 px-3 py-2">
           {navItems.map((item) => {
@@ -96,7 +175,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* Bottom */}
         <div className="space-y-0.5 px-3 py-2">
-          {bottomNav.map((item) => (
+          {visibleBottomNav.map((item) => (
             <Link
               key={item.label}
               href={item.href}
@@ -112,16 +191,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="border-t p-4">
           <div className="flex items-center gap-3">
             <Avatar className="size-9">
-              <AvatarImage src="https://i.pravatar.cc/150?img=5" alt="Jennie Doe" />
-              <AvatarFallback>JD</AvatarFallback>
+              <AvatarFallback>{currentUser?.name?.slice(0, 2).toUpperCase() || "U"}</AvatarFallback>
             </Avatar>
             <div className="flex-1 overflow-hidden">
-              <p className="truncate text-sm font-medium">Jennie Doe</p>
+              <p className="truncate text-sm font-medium">{currentUser?.name || "User"}</p>
               <p className="truncate text-xs text-muted-foreground">
-                jenniedoe@gmail.com
+                {currentUser?.email || ""}
               </p>
             </div>
-            <ChevronDown className="size-4 text-muted-foreground" />
+            <button
+              onClick={handleLogout}
+              className="flex size-8 items-center justify-center rounded-lg text-red-500 transition-colors hover:bg-red-50 hover:text-red-600"
+              title="Logout"
+            >
+              <LogOut className="size-4" />
+            </button>
           </div>
         </div>
       </aside>

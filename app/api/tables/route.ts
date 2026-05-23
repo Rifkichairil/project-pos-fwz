@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type TableStatus = "available" | "occupied" | "reserved" | "cleaning";
 
@@ -19,14 +20,18 @@ type CreateTablePayload = {
 const allowedStatuses: TableStatus[] = ["available", "occupied", "reserved", "cleaning"];
 
 export async function GET() {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   try {
     const result = await db.query<TableRow>(
       `
         SELECT id, name, capacity, status
         FROM dining_tables
-        WHERE is_active = TRUE
+        WHERE is_active = TRUE AND tenant_id = $1
         ORDER BY id
-      `
+      `,
+      [tenant.context.tenantId]
     );
 
     return NextResponse.json({ tables: result.rows });

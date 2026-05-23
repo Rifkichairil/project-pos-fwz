@@ -16,25 +16,48 @@ type User = {
   email: string;
   phone: string;
   role: string;
+  tenant: string;
   createdAt: string;
+};
+
+type Tenant = {
+  id: number;
+  name: string;
+  slug: string;
+  status: string;
 };
 
 export default function UserPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", password: "", role: "cashier" });
+  const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" });
   const [saving, setSaving] = useState(false);
+  const [currentRole, setCurrentRole] = useState("");
 
   const loadUsers = useCallback(async () => {
     try {
-      const res = await fetch("/api/users", { cache: "no-store" });
-      if (!res.ok) throw new Error();
-      const data = (await res.json()) as { users: User[] };
-      setUsers(data.users || []);
+      const [usersRes, tenantsRes, meRes] = await Promise.all([
+        fetch("/api/users", { cache: "no-store" }),
+        fetch("/api/tenants", { cache: "no-store" }),
+        fetch("/api/auth/me", { cache: "no-store" }),
+      ]);
+      if (usersRes.ok) {
+        const data = (await usersRes.json()) as { users: User[] };
+        setUsers(data.users || []);
+      }
+      if (tenantsRes.ok) {
+        const data = (await tenantsRes.json()) as { tenants: Tenant[] };
+        setTenants(data.tenants.filter((t) => t.status === "active") || []);
+      }
+      if (meRes.ok) {
+        const data = (await meRes.json()) as { role: string };
+        setCurrentRole(data.role || "");
+      }
     } catch {
-      toast.error("Gagal memuat data user");
+      toast.error("Gagal memuat data");
     } finally {
       setLoading(false);
     }
@@ -58,7 +81,7 @@ export default function UserPage() {
       if (!res.ok) { toast.error(data.error || "Gagal membuat user"); return; }
       toast.success("User berhasil dibuat!");
       setShowCreate(false);
-      setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier" });
+      setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" });
       void loadUsers();
     } catch {
       toast.error("Gagal membuat user");
@@ -129,15 +152,16 @@ export default function UserPage() {
                     <th className="pb-2 font-medium">Email</th>
                     <th className="pb-2 font-medium">Phone</th>
                     <th className="pb-2 font-medium">Role</th>
+                    <th className="pb-2 font-medium">Tenant</th>
                     <th className="pb-2 font-medium">Dibuat</th>
                     <th className="pb-2 font-medium text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {loading ? (
-                    <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
+                    <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
                   ) : filtered.length === 0 ? (
-                    <tr><td colSpan={7} className="py-6 text-center text-muted-foreground">Tidak ada user ditemukan</td></tr>
+                    <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Tidak ada user ditemukan</td></tr>
                   ) : (
                     filtered.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
@@ -146,6 +170,7 @@ export default function UserPage() {
                         <td className="py-2.5 text-muted-foreground">{u.email}</td>
                         <td className="py-2.5 text-muted-foreground">{u.phone}</td>
                         <td className="py-2.5">{roleBadge(u.role)}</td>
+                        <td className="py-2.5 text-muted-foreground">{u.tenant}</td>
                         <td className="py-2.5 text-muted-foreground">{u.createdAt}</td>
                         <td className="py-2.5 text-center">
                           <button onClick={() => handleDelete(u.id)} className="rounded p-1 text-red-400 hover:bg-red-50 hover:text-red-600" title="Hapus user">
@@ -168,7 +193,7 @@ export default function UserPage() {
           <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Create User</h3>
-              <button onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier" }); }} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
+              <button onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); }} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
             </div>
             <div className="space-y-3">
               <div className="space-y-1">
@@ -195,16 +220,28 @@ export default function UserPage() {
                   <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
                     <option value="cashier">Cashier</option>
                     <option value="manager">Manager</option>
-                    <option value="admin">Admin</option>
+                    {currentRole === "admin" && <option value="admin">Admin</option>}
                   </select>
                 </div>
               </div>
+              {/* Tenant - only show for admin, manager auto-assigns to own tenant */}
+              {currentRole === "admin" && (
+              <div className="space-y-1">
+                <Label className="text-xs">Tenant</Label>
+                <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" value={form.tenantId} onChange={(e) => setForm({ ...form, tenantId: e.target.value })}>
+                  <option value="">Pilih tenant...</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+              )}
               <div className="space-y-1">
                 <Label className="text-xs">Password</Label>
                 <Input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Password" />
               </div>
               <div className="flex gap-2 pt-2">
-                <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier" }); }}>Batal</Button>
+                <Button variant="outline" className="flex-1" onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); }}>Batal</Button>
                 <Button className="flex-1" onClick={handleCreate} disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button>
               </div>
             </div>

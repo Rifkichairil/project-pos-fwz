@@ -33,6 +33,7 @@ export async function GET() {
 
   try {
     const tenantId = tenant.context.tenantId;
+    const isAdmin = tenant.context.role === "admin";
 
     const [recipesResult, productsResult, ingredientsResult, lowStockMenusResult, addonsResult, settingsResult] = await Promise.all([
       db.query<{

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type AddonRow = {
   id: number;
@@ -9,9 +10,13 @@ type AddonRow = {
 };
 
 export async function GET() {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   try {
     const result = await db.query<AddonRow>(
-      `SELECT id, name, price::text, is_active FROM addons WHERE is_active = TRUE ORDER BY name`
+      `SELECT id, name, price::text, is_active FROM addons WHERE is_active = TRUE AND tenant_id = $1 ORDER BY name`,
+      [tenant.context.tenantId]
     );
 
     return NextResponse.json({

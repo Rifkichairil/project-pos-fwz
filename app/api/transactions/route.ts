@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type PaymentMethodUi = "Cash" | "QRIS" | "Debit" | "OVO" | "GoPay" | "Transfer";
 type PaymentStatusUi = "Success" | "Pending" | "Failed";
@@ -72,6 +73,9 @@ function mapOrderStatus(orderStatus: TransactionRow["order_status"], kanbanNote:
 }
 
 export async function GET(request: Request) {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   const { searchParams } = new URL(request.url);
   const rawLimit = Number(searchParams.get("limit") || "30");
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 1000) : 300;
@@ -133,10 +137,11 @@ export async function GET(request: Request) {
           ORDER BY osh.changed_at DESC, osh.id DESC
           LIMIT 1
         ) kanban ON TRUE
+        WHERE so.tenant_id = $2
         ORDER BY so.order_at DESC
         LIMIT $1
       `,
-      [limit]
+      [limit, tenant.context.tenantId]
     );
 
     const transactions = result.rows.map((row) => {

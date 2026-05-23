@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type Period = "daily" | "weekly" | "monthly" | "yearly";
 
@@ -63,6 +64,9 @@ function formatChartLabel(period: Period, value: number): string {
 }
 
 export async function GET(request: Request) {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   const { searchParams } = new URL(request.url);
   const period = (searchParams.get("period") || "daily") as Period;
 
@@ -73,9 +77,10 @@ export async function GET(request: Request) {
     );
   }
 
+  const tenantId = tenant.context.tenantId;
   const dateFilter = getDateFilter(period);
   const statusFilter = "so.status IN ('open', 'paid')";
-  const baseWhere = `${dateFilter} AND ${statusFilter}`;
+  const baseWhere = `${dateFilter} AND ${statusFilter} AND so.tenant_id = ${tenantId}`;
 
   try {
     // 1. Stats: totalRevenue, totalTransactions, averageOrderValue
@@ -175,13 +180,13 @@ export async function GET(request: Request) {
     try {
       let compQuery = "";
       if (period === "daily") {
-        compQuery = `SELECT order_at::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= CURRENT_DATE - INTERVAL '6 days' AND status IN ('open', 'paid') GROUP BY order_at::date ORDER BY d`;
+        compQuery = `SELECT order_at::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= CURRENT_DATE - INTERVAL '6 days' AND status IN ('open', 'paid') AND tenant_id = ${tenantId} GROUP BY order_at::date ORDER BY d`;
       } else if (period === "weekly") {
-        compQuery = `SELECT date_trunc('week', order_at)::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '4 weeks' AND status IN ('open', 'paid') GROUP BY date_trunc('week', order_at) ORDER BY d`;
+        compQuery = `SELECT date_trunc('week', order_at)::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '4 weeks' AND status IN ('open', 'paid') AND tenant_id = ${tenantId} GROUP BY date_trunc('week', order_at) ORDER BY d`;
       } else if (period === "monthly") {
-        compQuery = `SELECT date_trunc('month', order_at)::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '6 months' AND status IN ('open', 'paid') GROUP BY date_trunc('month', order_at) ORDER BY d`;
+        compQuery = `SELECT date_trunc('month', order_at)::date AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '6 months' AND status IN ('open', 'paid') AND tenant_id = ${tenantId} GROUP BY date_trunc('month', order_at) ORDER BY d`;
       } else {
-        compQuery = `SELECT EXTRACT(YEAR FROM order_at)::int AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '5 years' AND status IN ('open', 'paid') GROUP BY EXTRACT(YEAR FROM order_at) ORDER BY d`;
+        compQuery = `SELECT EXTRACT(YEAR FROM order_at)::int AS d, COALESCE(SUM(total_amount), 0)::numeric AS val, COUNT(id)::int AS trx FROM sales_orders WHERE order_at >= NOW() - INTERVAL '5 years' AND status IN ('open', 'paid') AND tenant_id = ${tenantId} GROUP BY EXTRACT(YEAR FROM order_at) ORDER BY d`;
       }
       const compResult = await db.query(compQuery);
       const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];

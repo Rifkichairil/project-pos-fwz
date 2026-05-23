@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type IngredientRow = {
   id: number;
@@ -56,23 +57,28 @@ function getMinStock(unit: string) {
 }
 
 export async function GET() {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   try {
+    const tenantId = tenant.context.tenantId;
+
     const [ingredientsResult, movementAggregateResult, purchasesResult, movementsResult] = await Promise.all([
       db.query<IngredientRow>(`
         SELECT id, name, base_unit, price_per_unit, supplier, stock
         FROM ingredients
-        WHERE is_active = TRUE
+        WHERE is_active = TRUE AND tenant_id = $1
         ORDER BY id
-      `),
+      `, [tenantId]),
       db.query<MovementAggregateRow>(`
         SELECT
           ingredient_id,
           COALESCE(SUM(CASE WHEN movement_type = 'in' THEN qty ELSE 0 END), 0)::text AS qty_in_30d,
           COALESCE(SUM(CASE WHEN movement_type = 'out' THEN qty ELSE 0 END), 0)::text AS qty_out_30d
         FROM stock_movements
-        WHERE movement_date >= CURRENT_DATE - INTERVAL '30 days'
+        WHERE movement_date >= CURRENT_DATE - INTERVAL '30 days' AND tenant_id = $1
         GROUP BY ingredient_id
-      `),
+      `, [tenantId]),
       db.query<PurchaseRow>(`
         SELECT
           po.po_code,
@@ -87,8 +93,9 @@ export async function GET() {
         JOIN suppliers s ON s.id = po.supplier_id
         JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
         JOIN ingredients i ON i.id = poi.ingredient_id
+        WHERE i.tenant_id = $1
         ORDER BY po.order_date DESC, po.id DESC, poi.id ASC
-      `),
+      `, [tenantId]),
       db.query<MovementRow>(`
         SELECT
           sm.movement_code,
@@ -101,8 +108,9 @@ export async function GET() {
           sm.created_by
         FROM stock_movements sm
         JOIN ingredients i ON i.id = sm.ingredient_id
+        WHERE sm.tenant_id = $1
         ORDER BY sm.movement_date DESC, sm.id DESC
-      `),
+      `, [tenantId]),
     ]);
 
     const movementByIngredient = new Map<number, MovementAggregateRow>();

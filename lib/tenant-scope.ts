@@ -1,13 +1,34 @@
 import { NextResponse } from "next/server";
-import { resolveTenantContext, type TenantContext } from "@/lib/tenant-context";
+import { getSession } from "@/lib/get-session";
 
-export async function requireTenantScope(): Promise<{ context: TenantContext } | { error: NextResponse }> {
-  const context = await resolveTenantContext();
-  if (!context) {
-    return {
-      error: NextResponse.json({ error: "Tenant context is unavailable" }, { status: 401 }),
-    };
+type TenantScopeSuccess = {
+  context: {
+    userId: number;
+    tenantId: number;
+    role: string;
+  };
+};
+
+type TenantScopeError = {
+  error: NextResponse;
+};
+
+export async function requireTenantScope(): Promise<TenantScopeSuccess | TenantScopeError> {
+  const session = await getSession();
+
+  if (!session) {
+    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
 
-  return { context };
+  if (session.tenantId === null) {
+    return { error: NextResponse.json({ error: "No active tenant selected" }, { status: 403 }) };
+  }
+
+  return {
+    context: {
+      userId: session.userId,
+      tenantId: session.tenantId,
+      role: session.role,
+    },
+  };
 }
