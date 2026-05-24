@@ -55,7 +55,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (currentUser?.role === "admin") {
+    if (currentUser?.role === "admin" || currentUser?.role === "manager") {
       fetch("/api/tenants")
         .then((res) => res.ok ? res.json() : null)
         .then((data) => { if (data?.tenants) setTenants(data.tenants.map((t: { id: number; name: string }) => ({ id: t.id, name: t.name }))); })
@@ -115,8 +115,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        {/* Tenant Switcher (Admin only) */}
-        {currentUser?.role === "admin" && tenants.length > 0 && (
+        {/* Tenant Switcher (Admin or users with multiple tenants) */}
+        {tenants.length > 1 && (
           <div className="relative mx-3 mb-2">
             <button
               onClick={() => setShowTenantSwitcher(!showTenantSwitcher)}

@@ -15,6 +15,13 @@ type UserRow = {
   tenant_name: string | null;
 };
 
+type UserTenantRow = {
+  user_id: number;
+  tenant_id: number;
+  tenant_name: string;
+  role: string;
+};
+
 export async function GET() {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -44,6 +51,24 @@ export async function GET() {
       );
     }
 
+    // Fetch user-tenant assignments for all users
+    const userIds = result.rows.map((r) => r.id);
+    let userTenantsMap: Record<number, { tenantId: number; tenantName: string; role: string }[]> = {};
+    if (userIds.length > 0) {
+      const utResult = await db.query<UserTenantRow>(
+        `SELECT ut.user_id, ut.tenant_id, t.name AS tenant_name, ut.role
+         FROM user_tenants ut
+         JOIN tenants t ON t.id = ut.tenant_id
+         WHERE ut.user_id = ANY($1)
+         ORDER BY ut.user_id, t.name`,
+        [userIds]
+      );
+      for (const row of utResult.rows) {
+        if (!userTenantsMap[row.user_id]) userTenantsMap[row.user_id] = [];
+        userTenantsMap[row.user_id].push({ tenantId: row.tenant_id, tenantName: row.tenant_name, role: row.role });
+      }
+    }
+
     return NextResponse.json({
       users: result.rows.map((row) => ({
         id: row.id,
@@ -53,6 +78,7 @@ export async function GET() {
         phone: row.phone || "-",
         role: row.role,
         tenant: row.tenant_name || "-",
+        tenants: userTenantsMap[row.id] || [],
         createdAt: new Date(row.created_at).toLocaleDateString("id-ID"),
       })),
     });
@@ -130,6 +156,94 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Failed to create user" }, { status: 500 });
   } finally {
     client.release();
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only admin can assign tenants
+  if (session.role !== "admin") {
+    return NextResponse.json({ error: "Hanya admin yang dapat assign tenant" }, { status: 403 });
+  }
+
+  try {
+    const body = (await request.json()) as {
+      userId?: number;
+      tenantId?: number;
+      role?: string;
+      action?: "assign" | "remove";
+    };
+
+    const userId = Number(body.userId);
+    const tenantId = Number(body.tenantId);
+    const role = ["admin", "manager", "cashier"].includes(body.role || "") ? body.role : "manager";
+    const action = body.action || "assign";
+
+    if (!userId || !tenantId) {
+      return NextResponse.json({ error: "userId dan tenantId wajib diisi" }, { status: 400 });
+    }
+
+    // Verify user exists
+    const userResult = await db.query<{ id: number }>(
+      `SELECT id FROM users WHERE id = $1 AND is_active = TRUE`, [userId]
+    );
+    if (userResult.rows.length === 0) {
+      return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
+    }
+
+    // Verify tenant exists and is active
+    const tenantResult = await db.query<{ id: number }>(
+      `SELECT id FROM tenants WHERE id = $1 AND status = 'active'`, [tenantId]
+    );
+    if (tenantResult.rows.length === 0) {
+      return NextResponse.json({ error: "Tenant tidak ditemukan" }, { status: 404 });
+    }
+
+    if (action === "assign") {
+      await db.query(
+        `INSERT INTO user_tenants (user_id, tenant_id, role, is_default)
+         VALUES ($1, $2, $3, FALSE)
+         ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = $3`,
+        [userId, tenantId, role]
+      );
+      return NextResponse.json({ success: true, message: "Tenant berhasil di-assign" });
+    } else {
+      // Remove tenant assignment
+      // Don't allow removing the last tenant
+      const countResult = await db.query<{ count: string }>(
+        `SELECT COUNT(*) as count FROM user_tenants WHERE user_id = $1`, [userId]
+      );
+      if (Number(countResult.rows[0].count) <= 1) {
+        return NextResponse.json({ error: "User harus memiliki minimal 1 tenant" }, { status: 400 });
+      }
+
+      await db.query(
+        `DELETE FROM user_tenants WHERE user_id = $1 AND tenant_id = $2`,
+        [userId, tenantId]
+      );
+
+      // If the removed tenant was the active one, switch to another
+      const activeResult = await db.query<{ active_tenant_id: number | null }>(
+        `SELECT active_tenant_id FROM users WHERE id = $1`, [userId]
+      );
+      if (activeResult.rows[0]?.active_tenant_id === tenantId) {
+        const newDefault = await db.query<{ tenant_id: number }>(
+          `SELECT tenant_id FROM user_tenants WHERE user_id = $1 LIMIT 1`, [userId]
+        );
+        if (newDefault.rows[0]) {
+          await db.query(
+            `UPDATE users SET active_tenant_id = $1, updated_at = NOW() WHERE id = $2`,
+            [newDefault.rows[0].tenant_id, userId]
+          );
+        }
+      }
+
+      return NextResponse.json({ success: true, message: "Tenant berhasil di-remove" });
+    }
+  } catch {
+    return NextResponse.json({ error: "Failed to update tenant assignment" }, { status: 500 });
   }
 }
 
