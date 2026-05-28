@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Trash2, X, Building2 } from "lucide-react";
+import { Plus, Search, Trash2, X, Building2, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 
 type User = {
@@ -37,6 +37,8 @@ export default function UserPage() {
   const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" });
   const [saving, setSaving] = useState(false);
   const [currentRole, setCurrentRole] = useState("");
+  const [page, setPage] = useState(1);
+  const perPage = 20;
   const [assignModal, setAssignModal] = useState<{ userId: number; userName: string; userTenants: { tenantId: number; tenantName: string; role: string }[] } | null>(null);
   const [assignForm, setAssignForm] = useState({ tenantId: "", role: "manager" });
   const [assignSaving, setAssignSaving] = useState(false);
@@ -176,6 +178,9 @@ export default function UserPage() {
     u.username.toLowerCase().includes(search.toLowerCase()) ||
     u.role.toLowerCase().includes(search.toLowerCase())
   );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
   const roleBadge = (role: string) => {
     if (role === "admin") return <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-600 text-[10px]">Admin</Badge>;
@@ -202,7 +207,7 @@ export default function UserPage() {
             type="search"
             placeholder="Search user..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             autoComplete="off"
             className="h-9 w-full rounded-lg border-border bg-muted/50 pl-8 text-xs"
           />
@@ -215,7 +220,7 @@ export default function UserPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[500px] text-left text-xs md:min-w-0">
                 <thead>
                   <tr className="border-b text-muted-foreground">
                     <th className="pb-2 font-medium">Nama</th>
@@ -234,7 +239,7 @@ export default function UserPage() {
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Tidak ada user ditemukan</td></tr>
                   ) : (
-                    filtered.map((u) => (
+                    paginated.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
                         <td className="py-2.5 font-medium">{u.name}</td>
                         <td className="py-2.5 text-muted-foreground">{u.username}</td>
@@ -261,6 +266,32 @@ export default function UserPage() {
                 </tbody>
               </table>
             </div>
+            {filtered.length > perPage && (
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Showing {(safePage - 1) * perPage + 1}&ndash;{Math.min(safePage * perPage, filtered.length)} of {filtered.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
+                    <ChevronLeft className="size-3.5" />
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <Button
+                      key={p}
+                      variant={safePage === p ? "default" : "outline"}
+                      size="sm"
+                      className={`h-7 min-w-[28px] px-1.5 text-xs ${safePage === p ? "bg-slate-600 hover:bg-slate-700" : ""}`}
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

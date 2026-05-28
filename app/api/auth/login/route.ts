@@ -3,7 +3,34 @@ import { db } from "@/lib/db";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 
+// Simple in-memory rate limiting
+const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+
+// Cleanup stale entries every 30 minutes
+setInterval(() => {
+  const cutoff = Date.now() - LOGIN_WINDOW_MS;
+  for (const [key, val] of loginAttempts) {
+    if (val.lastAttempt < cutoff) loginAttempts.delete(key);
+  }
+}, 30 * 60 * 1000).unref();
+
 export async function POST(request: Request) {
+  // Rate limiting check
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  const now = Date.now();
+  const attempt = loginAttempts.get(ip);
+  if (attempt) {
+    if (now - attempt.lastAttempt > LOGIN_WINDOW_MS) {
+      loginAttempts.set(ip, { count: 1, lastAttempt: now });
+    } else if (attempt.count >= MAX_LOGIN_ATTEMPTS) {
+      return NextResponse.json({ error: "Terlalu banyak percobaan login. Coba lagi 15 menit lagi." }, { status: 429 });
+    }
+  } else {
+    loginAttempts.set(ip, { count: 0, lastAttempt: now });
+  }
+
   try {
     const body = (await request.json()) as { username?: string; password?: string };
     const username = body.username?.trim();
@@ -24,12 +51,17 @@ export async function POST(request: Request) {
 
     const user = result.rows[0];
 
-    // Compare password (support both hashed and plain text for migration)
-    const isValid = user.password.startsWith("$2")
-      ? await bcrypt.compare(password, user.password)
-      : password === user.password;
+    let isValid = false;
+    try {
+      isValid = await bcrypt.compare(password, user.password);
+    } catch {
+      // Invalid hash format (e.g., legacy plain-text password)
+    }
 
     if (!isValid) {
+      // Track failed attempt
+      const current = loginAttempts.get(ip);
+      loginAttempts.set(ip, { count: (current?.count ?? 0) + 1, lastAttempt: Date.now() });
       return NextResponse.json({ error: "Username atau password salah" }, { status: 401 });
     }
 
@@ -78,7 +110,7 @@ export async function POST(request: Request) {
     response.cookies.set("session_token", sessionToken, {
       httpOnly: true,
       secure: isHttps,
-      sameSite: "lax",
+      sameSite: "strict",
       expires: expiresAt,
       path: "/",
     });

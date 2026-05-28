@@ -35,7 +35,7 @@ export async function GET() {
     const tenantId = tenant.context.tenantId;
     const isAdmin = tenant.context.role === "admin";
 
-    const [recipesResult, productsResult, ingredientsResult, lowStockMenusResult, addonsResult, settingsResult] = await Promise.all([
+    const [recipesResult, productsResult, ingredientsResult, addonsResult, settingsResult] = await Promise.all([
       db.query<{
         id: number;
         name: string;
@@ -105,21 +105,6 @@ export async function GET() {
         ORDER BY name
       `,
       [tenantId]),
-      db.query<{ menu_id: number; ingredient_name: string }>(`
-        SELECT DISTINCT mi.menu_id, i.name AS ingredient_name
-        FROM menu_ingredients mi
-        JOIN ingredients i ON i.id = mi.ingredient_id
-        JOIN menus m ON m.id = mi.menu_id
-        WHERE i.is_active = TRUE
-          AND i.tenant_id = $1
-          AND m.tenant_id = $1
-          AND i.stock <= (CASE
-            WHEN i.base_unit = 'pcs' THEN 100
-            WHEN i.base_unit IN ('kg', 'liter') THEN 20
-            ELSE 1000
-          END)
-      `,
-      [tenantId]),
       db.query<{ menu_id: number; addon_id: number; addon_name: string; addon_price: string }>(`
         SELECT maa.menu_id, a.id AS addon_id, a.name AS addon_name, a.price::text AS addon_price
         FROM menu_addon_assignments maa
@@ -136,6 +121,7 @@ export async function GET() {
     ]);
 
     const inventoryPolicy = settingsResult.rows[0]?.inventory_policy || "medium";
+    const LOW_PORTIONS = 5;
 
     const addonsMap = new Map<number, Array<{ id: number; name: string; price: number }>>();
     for (const row of addonsResult.rows) {
@@ -145,31 +131,45 @@ export async function GET() {
       addonsMap.get(row.menu_id)!.push({ id: row.addon_id, name: row.addon_name, price: Number(row.addon_price) });
     }
 
-    const lowStockMenuMap = new Map<number, string[]>();
-    for (const row of lowStockMenusResult.rows) {
-      if (!lowStockMenuMap.has(row.menu_id)) {
-        lowStockMenuMap.set(row.menu_id, []);
-      }
-      lowStockMenuMap.get(row.menu_id)!.push(row.ingredient_name);
-    }
-
-    // Build ingredient stock map for soldOut calculation (strict mode)
+    // Build ingredient stock map
     const ingredientStockMap = new Map<string, number>();
     for (const row of ingredientsResult.rows) {
       ingredientStockMap.set(row.name, Number(row.stock));
     }
 
-    // Check which menus are sold out (not enough stock for 1 serving)
+    // Calculate max portions per menu: min floor(stock / recipe_qty) across ingredients
+    const menuMaxPortions = new Map<number, number>();
+    for (const recipe of recipesResult.rows) {
+      if (recipe.ingredients.length === 0) {
+        menuMaxPortions.set(recipe.id, Number.MAX_SAFE_INTEGER);
+        continue;
+      }
+      let minPortions = Number.MAX_SAFE_INTEGER;
+      for (const ing of recipe.ingredients) {
+        const stock = ingredientStockMap.get(ing.name) ?? 0;
+        const portions = Math.floor(stock / ing.qty);
+        if (portions < minPortions) minPortions = portions;
+      }
+      menuMaxPortions.set(recipe.id, minPortions);
+    }
+
+    // Build lowStock info: ingredients that are limiting portions
+    const lowStockMenuMap = new Map<number, string[]>();
     const soldOutMenuIds = new Set<number>();
-    if (inventoryPolicy === "strict") {
-      for (const recipe of recipesResult.rows) {
+    for (const recipe of recipesResult.rows) {
+      const maxP = menuMaxPortions.get(recipe.id) ?? Number.MAX_SAFE_INTEGER;
+      if (maxP === 0 && inventoryPolicy === "strict") {
+        soldOutMenuIds.add(recipe.id);
+      }
+      if (maxP > 0 && maxP <= LOW_PORTIONS && inventoryPolicy !== "off") {
+        const limiting: string[] = [];
         for (const ing of recipe.ingredients) {
-          const currentStock = ingredientStockMap.get(ing.name) ?? 0;
-          if (currentStock < ing.qty) {
-            soldOutMenuIds.add(recipe.id);
-            break;
+          const stock = ingredientStockMap.get(ing.name) ?? 0;
+          if (Math.floor(stock / ing.qty) <= LOW_PORTIONS) {
+            limiting.push(ing.name);
           }
         }
+        lowStockMenuMap.set(recipe.id, limiting);
       }
     }
 
@@ -182,9 +182,10 @@ export async function GET() {
         category: row.category,
         hpp: Number(row.hpp),
         price: Number(row.selling_price),
-        lowStock: inventoryPolicy === "medium" ? lowStockMenuMap.has(row.id) : false,
-        lowStockItems: inventoryPolicy === "medium" ? (lowStockMenuMap.get(row.id) || []) : [],
-        soldOut: inventoryPolicy === "strict" ? soldOutMenuIds.has(row.id) : false,
+        lowStock: inventoryPolicy !== "off" && lowStockMenuMap.has(row.id),
+        lowStockItems: lowStockMenuMap.get(row.id) || [],
+        soldOut: inventoryPolicy === "strict" && soldOutMenuIds.has(row.id),
+        maxPortions: menuMaxPortions.get(row.id) ?? Number.MAX_SAFE_INTEGER,
         addons: addonsMap.get(row.id) || [],
       })),
       ingredients: ingredientsResult.rows.map((row) => ({

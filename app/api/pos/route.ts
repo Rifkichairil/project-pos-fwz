@@ -219,7 +219,7 @@ export async function PATCH(request: Request) {
     await client.query("BEGIN");
 
     const existing = await client.query<{ id: number; status: "draft" | "open" | "paid" | "cancelled" | "refunded"; member_id: number | null; total_amount: string; order_code: string }>(
-      `SELECT id, status, member_id, total_amount::text, order_code FROM sales_orders WHERE order_code = $1 AND tenant_id = $2 LIMIT 1`,
+      `SELECT id, status, member_id, total_amount::text, order_code FROM sales_orders WHERE order_code = $1 AND tenant_id = $2 LIMIT 1 FOR UPDATE`,
       [body.orderCode, tenantId]
     );
 
@@ -257,6 +257,11 @@ export async function PATCH(request: Request) {
 
       await client.query("COMMIT");
       return NextResponse.json({ success: true });
+    }
+
+    if (row.status === "paid" || row.status === "refunded") {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Order already finalized" }, { status: 409 });
     }
 
     if (!body.paymentStatus || !["pending", "paid", "failed", "voided", "refunded"].includes(body.paymentStatus)) {
@@ -611,6 +616,17 @@ export async function POST(request: Request) {
         });
       }
 
+      // Lock ingredients to prevent race conditions (overselling)
+      const allIngredientIds = [...new Set(
+        [...recipesByMenu.values()].flatMap(ings => ings.map(ing => ing.ingredientId))
+      )];
+      if (allIngredientIds.length > 0) {
+        await client.query(
+          `SELECT id FROM ingredients WHERE id = ANY($1::bigint[]) AND tenant_id = $2 FOR UPDATE`,
+          [allIngredientIds, tenantId]
+        );
+      }
+
       // For each ordered item, deduct stock and record movement
       let movementSeq = 0;
       for (const item of body.items) {
@@ -624,11 +640,15 @@ export async function POST(request: Request) {
           const totalQty = ing.qty * item.qty;
           movementSeq++;
 
-          // Deduct stock
-          await client.query(
-            `UPDATE ingredients SET stock = GREATEST(0, stock - $1), updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+          // Deduct stock with sufficiency check
+          const deductResult = await client.query(
+            `UPDATE ingredients SET stock = stock - $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3 AND stock >= $1`,
             [totalQty, ing.ingredientId, tenantId]
           );
+
+          if (deductResult.rowCount === 0) {
+            throw new Error(`Stok ${ing.name} tidak mencukupi`);
+          }
 
           // Record stock movement
           const mvCode = `MV-${body.orderCode}-${String(movementSeq).padStart(3, "0")}`;

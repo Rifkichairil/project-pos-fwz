@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type RefundItemPayload = {
   orderCode: string;
@@ -8,6 +9,9 @@ type RefundItemPayload = {
 };
 
 export async function POST(request: Request) {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   const client = await db.connect();
 
   try {

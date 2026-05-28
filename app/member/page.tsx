@@ -139,7 +139,7 @@ export default function MemberPage() {
           </p>
           {errorMessage && <p className="mb-3 text-xs text-red-600">{errorMessage}</p>}
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3">
             {filtered.map((m, index) => (
               <Card
                 key={m.id}
@@ -179,14 +179,14 @@ export default function MemberPage() {
         {/* Mobile Overlay */}
         {selectedMember && (
           <div
-            className="fixed inset-0 z-40 bg-black/50 min-[1300px]:hidden"
+            className="fixed inset-0 z-40 bg-black/50 min-[1024px]:hidden"
             onClick={() => setSelectedMember(null)}
           />
         )}
         <aside
           className={cn(
-            "w-[28rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1300px]:static min-[1300px]:translate-x-0 min-[1300px]:z-auto",
-            selectedMember ? "translate-x-0" : "translate-x-full min-[1300px]:translate-x-0"
+            "w-[85vw] sm:w-[28rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1024px]:static min-[1024px]:translate-x-0 min-[1024px]:z-auto",
+            selectedMember ? "translate-x-0" : "translate-x-full min-[1024px]:translate-x-0"
           )}
         >
           {selectedMember ? (

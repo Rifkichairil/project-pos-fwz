@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Trash2, X } from "lucide-react";
+import { Plus, Search, Trash2, X, ChevronLeft, ChevronRight } from "lucide-react";
 import toast from "react-hot-toast";
 
 type Tenant = {
@@ -24,6 +24,8 @@ export default function TenantPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", slug: "" });
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(1);
+  const perPage = 20;
 
   const loadTenants = useCallback(async () => {
     try {
@@ -80,6 +82,9 @@ export default function TenantPage() {
     t.name.toLowerCase().includes(search.toLowerCase()) ||
     t.slug.toLowerCase().includes(search.toLowerCase())
   );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * perPage, safePage * perPage);
 
   const statusBadge = (status: string) => {
     if (status === "active") return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-600 text-[10px]">Active</Badge>;
@@ -101,7 +106,7 @@ export default function TenantPage() {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="mb-4 relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search tenant..." value={search} onChange={(e) => setSearch(e.target.value)} className="h-9 w-full rounded-lg border-border bg-muted/50 pl-8 text-xs" />
+          <Input placeholder="Search tenant..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="h-9 w-full rounded-lg border-border bg-muted/50 pl-8 text-xs" />
         </div>
 
         <Card>
@@ -126,7 +131,7 @@ export default function TenantPage() {
                   ) : filtered.length === 0 ? (
                     <tr><td colSpan={5} className="py-6 text-center text-muted-foreground">Tidak ada tenant ditemukan</td></tr>
                   ) : (
-                    filtered.map((t) => (
+                    paginated.map((t) => (
                       <tr key={t.id} className="hover:bg-muted/30">
                         <td className="py-2.5 font-medium">{t.name}</td>
                         <td className="py-2.5 text-muted-foreground">{t.slug}</td>
@@ -143,6 +148,32 @@ export default function TenantPage() {
                 </tbody>
               </table>
             </div>
+            {filtered.length > perPage && (
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                  Showing {(safePage - 1) * perPage + 1}&ndash;{Math.min(safePage * perPage, filtered.length)} of {filtered.length}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage <= 1} onClick={() => setPage(safePage - 1)}>
+                    <ChevronLeft className="size-3.5" />
+                  </Button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                    <Button
+                      key={p}
+                      variant={safePage === p ? "default" : "outline"}
+                      size="sm"
+                      className={`h-7 min-w-[28px] px-1.5 text-xs ${safePage === p ? "bg-slate-600 hover:bg-slate-700" : ""}`}
+                      onClick={() => setPage(p)}
+                    >
+                      {p}
+                    </Button>
+                  ))}
+                  <Button variant="outline" size="sm" className="h-7 w-7 p-0" disabled={safePage >= totalPages} onClick={() => setPage(safePage + 1)}>
+                    <ChevronRight className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

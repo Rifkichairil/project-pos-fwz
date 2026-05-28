@@ -116,7 +116,7 @@ export default function InventoryPage() {
   const [purchasePage, setPurchasePage] = useState(1);
   const [movementPage, setMovementPage] = useState(1);
   const [movementTypeFilter, setMovementTypeFilter] = useState<MovementTypeFilter>("all");
-  const perPage = 8;
+  const perPage = 20;
 
   const closeAllModals = () => {
     setShowAddIngredient(false);
@@ -376,7 +376,7 @@ export default function InventoryPage() {
             <>
             {/* Alert Cards */}
             {lowStock.length > 0 && (
-              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+              <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
                 {lowStock.map((i) => (
                   <Card key={i.id} className="border-red-200 bg-red-50/50">
                     <CardContent className="p-2 sm:p-2.5">
@@ -415,7 +415,7 @@ export default function InventoryPage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[500px] text-left text-xs">
+                  <table className="w-full min-w-[400px] text-left text-xs md:min-w-[500px]">
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 font-medium">Nama Bahan</th>
@@ -522,7 +522,7 @@ export default function InventoryPage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[600px] text-left text-xs">
+                  <table className="w-full min-w-[500px] text-left text-xs md:min-w-[600px]">
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 font-medium">ID PO</th>
@@ -616,7 +616,7 @@ export default function InventoryPage() {
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[500px] text-left text-xs">
+                  <table className="w-full min-w-[400px] text-left text-xs md:min-w-[500px]">
                     <thead>
                       <tr className="border-b text-muted-foreground">
                         <th className="pb-2 font-medium">ID</th>

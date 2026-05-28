@@ -5,11 +5,13 @@ export default function NotFoundPage() {
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-background">
       {/* Decorative blobs */}
-      <div className="absolute -left-20 -top-20 size-72 rounded-full bg-primary/10 blur-sm" />
-      <div className="absolute -bottom-16 -right-16 size-64 rounded-full bg-primary/10 blur-sm" />
+      <div className="hidden sm:block" aria-hidden="true">
+        <div className="absolute -left-20 -top-20 size-72 rounded-full bg-primary/10 blur-sm" />
+        <div className="absolute -bottom-16 -right-16 size-64 rounded-full bg-primary/10 blur-sm" />
+      </div>
 
       <div className="relative z-10 mx-4 flex flex-col items-center text-center">
-        <p className="text-8xl font-bold text-primary/20">404</p>
+        <p className="text-6xl sm:text-8xl font-bold text-primary/20">404</p>
         <h1 className="mt-4 text-2xl font-semibold text-foreground">
           Halaman Tidak Ditemukan
         </h1>

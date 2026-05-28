@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { requireTenantScope } from "@/lib/tenant-scope";
 
 type MemberRow = {
   id: number;
@@ -49,6 +50,9 @@ function formatDate(value: string | null) {
 }
 
 export async function GET() {
+  const tenant = await requireTenantScope();
+  if ("error" in tenant) return tenant.error;
+
   try {
     const [membersResult, transactionsResult, pointHistoryResult, rewardsResult] = await Promise.all([
       db.query<MemberRow>(`

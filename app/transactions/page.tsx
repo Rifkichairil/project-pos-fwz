@@ -59,7 +59,7 @@ type TransactionsApiResponse = {
   transactions: Transaction[];
 };
 
-const perPage = 10;
+const perPage = 20;
 type DateFilter = "All" | "Today" | "Weekly" | "Monthly" | "Custom";
 
 const parseTransactionDate = (date: string) => {
@@ -279,7 +279,7 @@ export default function TransactionsPage() {
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
         {/* Summary */}
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
           <Card className="animate-slide-up" style={{ animationDelay: '0ms' }}>
             <CardContent className="flex flex-col gap-1 p-4">
               <span className="text-xs text-muted-foreground">Total</span>
@@ -324,7 +324,7 @@ export default function TransactionsPage() {
 
 
         {/* Filters */}
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between animate-slide-up" style={{ animationDelay: '250ms' }}>
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between animate-slide-up" style={{ animationDelay: '250ms' }}>
           <div className="flex w-full items-center gap-2 sm:w-auto">
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -340,7 +340,7 @@ export default function TransactionsPage() {
               <span className="hidden sm:inline">Reset</span>
             </Button>
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
             <div className="flex flex-col gap-2">
               <span className="text-xs font-medium text-muted-foreground">Date</span>
               <div className="flex flex-wrap items-center gap-2">
@@ -354,7 +354,7 @@ export default function TransactionsPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectTrigger className="h-8 w-[140px] text-xs sm:w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -371,7 +371,7 @@ export default function TransactionsPage() {
                       render={
                         <Button
                           variant="outline"
-                          className="h-8 min-w-[220px] justify-start px-2 text-xs font-normal"
+                          className="h-8 min-w-[180px] justify-start px-2 text-xs font-normal sm:min-w-[220px]"
                         />
                       }
                     >
@@ -414,7 +414,7 @@ export default function TransactionsPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="h-8 w-[180px] text-xs">
+                <SelectTrigger className="h-8 w-[140px] text-xs sm:w-[180px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

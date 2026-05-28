@@ -90,7 +90,7 @@ export default function MenuRecipePage() {
 
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [pricingPage, setPricingPage] = useState(1);
-  const pricingPerPage = 10;
+  const pricingPerPage = 20;
   const [newMenu, setNewMenu] = useState({
     name: "",
     category: "Main Dish",
@@ -105,7 +105,7 @@ export default function MenuRecipePage() {
   const [newAddonName, setNewAddonName] = useState("");
   const [newAddonPrice, setNewAddonPrice] = useState("");
   const [addonPage, setAddonPage] = useState(1);
-  const addonPerPage = 8;
+  const addonPerPage = 20;
 
   // Edit menu state
   const [showEditMenu, setShowEditMenu] = useState(false);
@@ -482,7 +482,7 @@ export default function MenuRecipePage() {
               <div className="flex min-h-0 flex-1 overflow-hidden">
                 {/* Left — Recipe Cards */}
                 <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
                     {filteredRecipes.map((recipe, index) => {
                       const hpp = calcHPP(recipe.ingredients, ingredientPrices);
                       return (
@@ -526,15 +526,15 @@ export default function MenuRecipePage() {
                 {/* Mobile Overlay */}
                 {selectedRecipe && sidebarOpen && (
                   <div
-                    className="fixed inset-0 z-40 bg-black/50 min-[1570px]:hidden"
+                    className="fixed inset-0 z-40 bg-black/50 min-[1280px]:hidden"
                     onClick={() => setSidebarOpen(false)}
                   />
                 )}
                 {/* Right — Recipe Detail Sidebar */}
                 <aside
                   className={cn(
-                    "w-[32rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1570px]:static min-[1570px]:translate-x-0 min-[1570px]:z-auto",
-                    sidebarOpen ? "translate-x-0" : "translate-x-full min-[1570px]:translate-x-0"
+                    "w-[85vw] sm:w-[32rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1280px]:static min-[1280px]:translate-x-0 min-[1280px]:z-auto",
+                    sidebarOpen ? "translate-x-0" : "translate-x-full min-[1280px]:translate-x-0"
                   )}
                 >
                   {selectedRecipe ? (
@@ -555,7 +555,7 @@ export default function MenuRecipePage() {
                         </div>
                         <button
                           onClick={() => setSidebarOpen(false)}
-                          className="min-[1570px]:hidden flex size-8 items-center justify-center rounded-lg border"
+                          className="min-[1280px]:hidden flex size-8 items-center justify-center rounded-lg border"
                         >
                           <X className="size-4" />
                         </button>

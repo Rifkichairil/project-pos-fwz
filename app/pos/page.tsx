@@ -98,10 +98,12 @@ type PosMenuItem = {
   lowStock: boolean;
   lowStockItems: string[];
   soldOut: boolean;
+  maxPortions: number;
   addons: Array<{ name: string; price: number }>;
 };
 
 type MenuApiResponse = {
+  inventoryPolicy?: string;
   products: Array<{
     id: number;
     name: string;
@@ -110,6 +112,7 @@ type MenuApiResponse = {
     lowStock?: boolean;
     lowStockItems?: string[];
     soldOut?: boolean;
+    maxPortions?: number;
     addons?: Array<{ name: string; price: number }>;
   }>;
 };
@@ -238,6 +241,7 @@ export default function PosPage() {
   const [storeQrisImage, setStoreQrisImage] = useState("");
   const [pointPerRupiah, setPointPerRupiah] = useState(10000);
   const [pointValue, setPointValue] = useState(1);
+  const [inventoryPolicy, setInventoryPolicy] = useState("medium");
 
   const cashierName = "Jennie Doe";
 
@@ -283,6 +287,7 @@ export default function PosPage() {
       }
 
       const data = (await response.json()) as MenuApiResponse;
+      setInventoryPolicy(data.inventoryPolicy || "medium");
       const mapped = (data.products || []).map((product) => ({
         id: product.id,
         name: product.name,
@@ -292,6 +297,7 @@ export default function PosPage() {
         lowStock: product.lowStock || false,
         lowStockItems: product.lowStockItems || [],
         soldOut: product.soldOut || false,
+        maxPortions: product.maxPortions ?? Number.MAX_SAFE_INTEGER,
         addons: product.addons || [],
       }));
 
@@ -814,8 +820,8 @@ export default function PosPage() {
         throw new Error(data.error || "Failed to save order");
       }
 
-      // Update table status to occupied when order is paid
-      if (paymentStatus === "paid" && tableNumber) {
+      // Update table status to occupied when order is created
+      if (tableNumber) {
         const selectedTable = tables.find((t) => t.name === tableNumber);
         if (selectedTable) {
           void fetch(`/api/tables/${selectedTable.id}`, {
@@ -922,19 +928,22 @@ export default function PosPage() {
         {/* Header */}
         <header className="flex h-16 items-center gap-3 border-b px-4 sm:gap-4 sm:px-6">
           <h1 className="text-base font-semibold sm:text-lg">Welcome, {cashierName}</h1>
-          <div className="relative ml-auto hidden sm:flex w-64 items-center">
+          <div className="relative ml-auto hidden sm:flex w-40 items-center lg:w-64">
             <Search className="absolute left-3 size-4 text-muted-foreground" />
             <Input
               placeholder="Search anything"
               className="h-9 rounded-lg border-border bg-muted/50 pl-9 text-sm"
             />
           </div>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Calendar className="size-4" />
-            <span>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground sm:gap-1.5 sm:text-sm">
+            <Calendar className="size-3.5 sm:size-4" />
+            <span className="hidden sm:inline">
               {currentTime.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" })}
               {" · "}
               {currentTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </span>
+            <span className="sm:hidden">
+              {currentTime.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
             </span>
           </div>
         </header>
@@ -1016,7 +1025,7 @@ export default function PosPage() {
             ) : boardOrders.length === 0 ? (
               <p className="text-xs text-muted-foreground">No orders found.</p>
             ) : (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 2xl:gap-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-5 2xl:gap-4">
                 {boardOrders.slice(0, 5).map((order) => (
                   <Card key={order.id} className="border-border/60">
                     <CardContent className="p-4">
@@ -1106,7 +1115,7 @@ export default function PosPage() {
           {/* Menu Grid */}
           <div
             key={activeCategory}
-            className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
           >
             {filteredMenu.map((item) => (
               <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", item.soldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-teal-400 border-2" : "border border-border/40")}>
@@ -1119,10 +1128,10 @@ export default function PosPage() {
                   {!item.soldOut && item.lowStock && (
                     <div className="absolute top-2 right-2 group/lowstock">
                       <Badge variant="outline" className="cursor-help border-red-200 bg-red-50 text-[9px] text-red-600 px-1.5 py-0.5">
-                        Stok Menipis
+                        {item.maxPortions <= 5 ? `${item.maxPortions} porsi` : "Stok Menipis"}
                       </Badge>
                       <span className="pointer-events-none absolute top-full right-0 z-50 mt-1 whitespace-nowrap rounded-lg border bg-popover px-2.5 py-1.5 text-[10px] text-popover-foreground shadow-md opacity-0 transition-opacity group-hover/lowstock:opacity-100">
-                        <span className="block font-medium mb-0.5">Stok Menipis:</span>
+                        <span className="block font-medium mb-0.5">Stok Menipis — tersisa {item.maxPortions} porsi:</span>
                         {item.lowStockItems.map((name, i) => (
                           <span key={i} className="block">{name}</span>
                         ))}
@@ -1354,7 +1363,7 @@ export default function PosPage() {
               {tablesLoading ? (
                 <p className="text-xs text-muted-foreground">Loading tables...</p>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 2xl:grid-cols-5">
                   {tables.map((table) => (
                     <Card key={table.id} className="border-border/60">
                       <CardContent className="p-4">
@@ -1451,7 +1460,7 @@ export default function PosPage() {
       )}
       <aside
         className={cn(
-          "flex w-[340px] shrink-0 flex-col border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-500 lg:static lg:translate-x-0 lg:z-auto",
+          "flex w-full sm:w-[340px] shrink-0 flex-col border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-500 lg:static lg:translate-x-0 lg:z-auto",
           cartOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
         )}
       >
@@ -1687,9 +1696,9 @@ export default function PosPage() {
         <div className="border-t p-4">
           <h3 className="mb-3 text-sm font-semibold">Payment Details</h3>
           <div className="space-y-3">
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
               <Select value={paymentMethod} onValueChange={(val) => { if (val) setPaymentMethod(val as PaymentMethod); }}>
-                <SelectTrigger className="col-span-2 h-9 w-full rounded-lg text-sm">
+                <SelectTrigger className="sm:col-span-2 h-9 w-full rounded-lg text-sm">
                   <div className="flex items-center gap-2">
                     <Wallet className="size-3.5" />
                     <SelectValue />
@@ -1701,7 +1710,7 @@ export default function PosPage() {
                 </SelectContent>
               </Select>
               <Select value={selectedPromo} onValueChange={(val) => { setSelectedPromo(!val || val === "none" ? "" : val); }}>
-                <SelectTrigger className="col-span-3 h-9 w-full rounded-lg text-sm">
+                <SelectTrigger className="sm:col-span-3 h-9 w-full rounded-lg text-sm">
                   <SelectValue placeholder="Promo code" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1922,12 +1931,27 @@ export default function PosPage() {
                 </button>
                 <span className="w-8 text-center text-lg font-semibold">{modalQty}</span>
                 <button
-                  onClick={() => setModalQty(modalQty + 1)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    const maxQty = inventoryPolicy === "strict" && addToCartModal.maxPortions < Number.MAX_SAFE_INTEGER
+                      ? addToCartModal.maxPortions
+                      : Number.MAX_SAFE_INTEGER;
+                    if (modalQty < maxQty) setModalQty(modalQty + 1);
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border text-muted-foreground hover:text-foreground disabled:opacity-30"
+                  disabled={
+                    inventoryPolicy === "strict" &&
+                    addToCartModal.maxPortions < Number.MAX_SAFE_INTEGER &&
+                    modalQty >= addToCartModal.maxPortions
+                  }
                 >
                   <Plus className="size-4" />
                 </button>
               </div>
+              {inventoryPolicy === "strict" && addToCartModal.maxPortions < Number.MAX_SAFE_INTEGER && (
+                <p className="text-center text-[10px] text-amber-600">
+                  Stok terbatas — maksimal {addToCartModal.maxPortions} porsi
+                </p>
+              )}
 
               {/* Total & Button */}
               <Button
@@ -2007,7 +2031,7 @@ export default function PosPage() {
               {/* Order Type */}
               <div>
                 <label className="mb-1.5 block text-xs text-muted-foreground">Order Type</label>
-                <Select value={orderType} onValueChange={(val) => { if (val) setOrderType(val); }}>
+                <Select value={orderType} onValueChange={(val) => { if (val) { setOrderType(val); if (val !== "dinein") setTableNumber(""); } }}>
                   <SelectTrigger className="h-9 w-full rounded-lg text-sm">
                     <SelectValue placeholder="Pilih tipe order" />
                   </SelectTrigger>
@@ -2019,10 +2043,11 @@ export default function PosPage() {
                 </Select>
               </div>
 
-              {/* Table Number */}
+              {/* Table Number — only for Dine In */}
+              {orderType === "dinein" && (
               <div>
                 <label className="mb-1.5 block text-xs text-muted-foreground">
-                  Table Number {orderType === "dinein" && <span className="text-red-500">*</span>}
+                  Table Number <span className="text-red-500">*</span>
                 </label>
                 <Select value={tableNumber} onValueChange={(val) => { if (val) setTableNumber(val); }}>
                   <SelectTrigger className="h-9 w-full rounded-lg text-sm">
@@ -2035,6 +2060,7 @@ export default function PosPage() {
                   </SelectContent>
                 </Select>
               </div>
+              )}
 
               {/* Save Button */}
               <Button

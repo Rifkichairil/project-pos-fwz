@@ -1,6 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { format } from "date-fns";
+import type { DateRange } from "react-day-picker";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -17,7 +21,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 
-type Period = "daily" | "weekly" | "monthly" | "yearly";
+type Period = "daily" | "weekly" | "monthly" | "yearly" | "custom";
 
 const periods: { label: string; value: Period }[] = [
   { label: "Hari Ini", value: "daily" },
@@ -46,14 +50,21 @@ type DashboardData = {
 
 export default function DashboardPage() {
   const [period, setPeriod] = useState<Period>("daily");
+  const [dateRange, setDateRange] = useState<DateRange | undefined>();
   const [visible, setVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<DashboardData | null>(null);
 
-  const loadDashboard = useCallback(async (p: Period) => {
+  const loadDashboard = useCallback(async (p: Period, range?: DateRange) => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/dashboard?period=${p}`, { cache: "no-store" });
+      let url = `/api/dashboard?period=${p}`;
+      if (p === "custom" && range?.from && range?.to) {
+        const start = format(range.from, "yyyy-MM-dd");
+        const end = format(range.to, "yyyy-MM-dd");
+        url += `&startDate=${start}&endDate=${end}`;
+      }
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error();
       const json = (await res.json()) as DashboardData;
       setData(json);
@@ -65,8 +76,23 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void loadDashboard(period);
-  }, [period, loadDashboard]);
+    void loadDashboard(period, dateRange);
+  }, [period, dateRange, loadDashboard]);
+
+  const handlePeriodChange = (p: Period) => {
+    if (p === period) return;
+    if (p !== "custom") {
+      setDateRange(undefined);
+    }
+    setPeriod(p);
+  };
+
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
+    if (range?.from && range?.to) {
+      setPeriod("custom");
+    }
+  };
 
   useEffect(() => {
     setVisible(false);
@@ -105,8 +131,12 @@ export default function DashboardPage() {
     { label: "Growth", value: totalRevenue > 0 ? "Active" : "-", icon: TrendingUp },
   ];
 
-  const chartTitleLeft = period === "daily" ? "Sales per Jam (Hari Ini)" : period === "weekly" ? "Sales per Hari (Minggu Ini)" : period === "monthly" ? "Sales per Minggu (Bulan Ini)" : "Sales per Bulan (Tahun Ini)";
-  const chartTitleRight = period === "daily" ? "Sales 7 Hari Terakhir" : period === "weekly" ? "Sales 4 Minggu Terakhir" : period === "monthly" ? "Sales 6 Bulan Terakhir" : "Sales per Tahun";
+  const chartTitleLeft = period === "custom"
+    ? (dateRange?.from && dateRange?.to ? `Sales (${format(dateRange.from, "dd MMM")} - ${format(dateRange.to, "dd MMM yyyy")})` : "Sales (Custom)")
+    : period === "daily" ? "Sales per Jam (Hari Ini)" : period === "weekly" ? "Sales per Hari (Minggu Ini)" : period === "monthly" ? "Sales per Minggu (Bulan Ini)" : "Sales per Bulan (Tahun Ini)";
+  const chartTitleRight = period === "custom"
+    ? (dateRange?.from && dateRange?.to ? `Periode Sebelumnya (${format(dateRange.from, "dd MMM")} - ${format(dateRange.to, "dd MMM yyyy")})` : "Periode Sebelumnya")
+    : period === "daily" ? "Sales 7 Hari Terakhir" : period === "weekly" ? "Sales 4 Minggu Terakhir" : period === "monthly" ? "Sales 6 Bulan Terakhir" : "Sales per Tahun";
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -123,15 +153,43 @@ export default function DashboardPage() {
               variant={period === p.value ? "default" : "outline"}
               size="sm"
               className={cn("h-8 rounded-lg text-xs", period === p.value && "bg-primary text-primary-foreground")}
-              onClick={() => { if (period !== p.value) setPeriod(p.value); }}
+              onClick={() => handlePeriodChange(p.value)}
             >
               {p.label}
             </Button>
           ))}
-          <div className="ml-2 flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs text-muted-foreground">
-            <CalendarDays className="size-3.5" />
-            <span>{new Date().toLocaleDateString("id-ID")}</span>
-          </div>
+          <Popover>
+            <PopoverTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={cn("ml-2 h-8 gap-1.5 rounded-lg text-xs", period === "custom" && "border-primary text-primary")}
+                />
+              }
+            >
+              <CalendarDays className="size-3.5" />
+              {period === "custom" && dateRange?.from ? (
+                dateRange.to ? (
+                  <span>{format(dateRange.from, "dd MMM yyyy")} - {format(dateRange.to, "dd MMM yyyy")}</span>
+                ) : (
+                  <span>{format(dateRange.from, "dd MMM yyyy")}</span>
+                )
+              ) : (
+                <span>{new Date().toLocaleDateString("id-ID")}</span>
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="range"
+                defaultMonth={dateRange?.from}
+                selected={dateRange}
+                onSelect={handleDateRangeSelect}
+                numberOfMonths={2}
+                disabled={(date) => date > new Date()}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
 
         {loading ? (
@@ -141,7 +199,7 @@ export default function DashboardPage() {
         ) : (
           <div key={period} className="animate-in fade-in-0 slide-in-from-bottom-3 duration-[1500ms]">
             {/* Stats */}
-            <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {statCards.map((s) => (
                 <Card key={s.label} className="relative overflow-hidden border-border/60">
                   <s.icon className="absolute -bottom-1 right-2 size-24 opacity-[0.06]" strokeWidth={1.2} />
@@ -164,10 +222,10 @@ export default function DashboardPage() {
                   {qrisPct > 0 && <div className="h-full bg-blue-500" style={{ width: `${qrisPct}%` }} />}
                   {otherPct > 0 && <div className="h-full bg-violet-500" style={{ width: `${otherPct}%` }} />}
                 </div>
-                <div className="flex flex-wrap gap-4 sm:gap-6">
+                <div className="flex flex-wrap gap-3 sm:gap-6">
                   <div className="flex items-center gap-2"><div className="size-3 rounded-full bg-emerald-500" /><Banknote className="size-3.5 text-muted-foreground" /><span className="text-xs font-medium">Cash</span><span className="text-xs text-muted-foreground">{formatRp(cashRevenue)} ({cashPct}%)</span></div>
                   <div className="flex items-center gap-2"><div className="size-3 rounded-full bg-blue-500" /><QrCode className="size-3.5 text-muted-foreground" /><span className="text-xs font-medium">QRIS</span><span className="text-xs text-muted-foreground">{formatRp(qrisRevenue)} ({qrisPct}%)</span></div>
-                  <div className="flex items-center gap-2"><div className="size-3 rounded-full bg-violet-500" /><Smartphone className="size-3.5 text-muted-foreground" /><span className="text-xs font-medium">Lainnya</span><span className="text-xs text-muted-foreground">{formatRp(otherRevenue)} ({otherPct}%)</span></div>
+                  {otherRevenue > 0 && <div className="flex items-center gap-2"><div className="size-3 rounded-full bg-violet-500" /><Smartphone className="size-3.5 text-muted-foreground" /><span className="text-xs font-medium">Lainnya</span><span className="text-xs text-muted-foreground">{formatRp(otherRevenue)} ({otherPct}%)</span></div>}
                 </div>
               </CardContent>
             </Card>
