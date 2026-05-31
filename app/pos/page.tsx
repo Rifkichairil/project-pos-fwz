@@ -1117,21 +1117,26 @@ export default function PosPage() {
             key={activeCategory}
             className="grid grid-cols-2 gap-3 min-[640px]:grid-cols-3 min-[1024px]:grid-cols-2 min-[1091px]:grid-cols-3 min-[1126px]:grid-cols-4 min-[1536px]:grid-cols-5 animate-in fade-in-0 duration-[700ms]"
           >
-            {filteredMenu.map((item) => (
-              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", item.soldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-teal-400 border-2" : "border border-border/40")}>
+            {filteredMenu.map((item) => {
+              const cartQty = cart.filter((c) => c.id === item.id).reduce((sum, c) => sum + c.qty, 0);
+              const availablePortions = item.maxPortions < Number.MAX_SAFE_INTEGER ? Math.max(0, item.maxPortions - cartQty) : Number.MAX_SAFE_INTEGER;
+              const isEffectivelySoldOut = item.soldOut || (inventoryPolicy === "strict" && availablePortions <= 0);
+              const isEffectivelyLowStock = !isEffectivelySoldOut && (item.lowStock || (availablePortions > 0 && availablePortions <= 5));
+              return (
+              <Card key={item.id} className={cn("flex flex-col gap-0 overflow-hidden rounded-xl py-0 shadow-none transition-all duration-500 hover:-translate-y-0.5", isEffectivelySoldOut ? "opacity-50" : "", cart.some((c) => c.id === item.id) ? "border-teal-400 border-2" : "border border-border/40")}>
                 <div className="relative flex aspect-square w-full shrink-0 items-center justify-center bg-muted/40">
-                  {item.soldOut && (
+                  {isEffectivelySoldOut && (
                     <Badge variant="outline" className="absolute top-2 right-2 border-red-300 bg-red-100 text-[9px] text-red-700 px-1.5 py-0.5">
                       Sold Out
                     </Badge>
                   )}
-                  {!item.soldOut && item.lowStock && (
+                  {isEffectivelyLowStock && (
                     <div className="absolute top-2 right-2 group/lowstock">
                       <Badge variant="outline" className="cursor-help border-red-200 bg-red-50 text-[9px] text-red-600 px-1.5 py-0.5">
-                        {item.maxPortions <= 5 ? `${item.maxPortions} porsi` : "Stok Menipis"}
+                        {availablePortions <= 5 ? `${availablePortions} porsi` : "Stok Menipis"}
                       </Badge>
                       <span className="pointer-events-none absolute top-full right-0 z-50 mt-1 whitespace-nowrap rounded-lg border bg-popover px-2.5 py-1.5 text-[10px] text-popover-foreground shadow-md opacity-0 transition-opacity group-hover/lowstock:opacity-100">
-                        <span className="block font-medium mb-0.5">Stok Menipis — tersisa {item.maxPortions} porsi:</span>
+                        <span className="block font-medium mb-0.5">Stok Menipis — tersisa {availablePortions} porsi:</span>
                         {item.lowStockItems.map((name, i) => (
                           <span key={i} className="block">{name}</span>
                         ))}
@@ -1155,7 +1160,7 @@ export default function PosPage() {
                     <Button
                       variant="outline"
                       className="h-7 w-7 shrink-0 rounded-lg p-0"
-                      disabled={item.soldOut}
+                      disabled={isEffectivelySoldOut}
                       onClick={() => {
                         setAddToCartModal(item);
                         setModalVariant("regular");
@@ -1170,7 +1175,8 @@ export default function PosPage() {
                   </div>
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
             </>
           ) : activeTab === "list" ? (

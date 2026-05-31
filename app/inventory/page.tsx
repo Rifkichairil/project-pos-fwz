@@ -106,12 +106,10 @@ export default function InventoryPage() {
   const [showAddIngredient, setShowAddIngredient] = useState(false);
   const [showAddPurchase, setShowAddPurchase] = useState(false);
   const [showAddMovement, setShowAddMovement] = useState(false);
-  const [showRestock, setShowRestock] = useState(false);
 
   const [newIngredient, setNewIngredient] = useState({ name: "", unit: "", price: "", supplier: "", stock: "", minStock: "" });
   const [newPurchase, setNewPurchase] = useState({ item: "", qty: "", unit: "", price: "", supplier: "", date: "" });
   const [newMovement, setNewMovement] = useState({ item: "", type: "in" as "in" | "out", qty: "", unit: "", ref: "", user: "" });
-  const [restock, setRestock] = useState({ ingredientId: "", qty: "", ref: "" });
 
   const [stockPage, setStockPage] = useState(1);
   const [purchasePage, setPurchasePage] = useState(1);
@@ -123,11 +121,9 @@ export default function InventoryPage() {
     setShowAddIngredient(false);
     setShowAddPurchase(false);
     setShowAddMovement(false);
-    setShowRestock(false);
     setNewIngredient({ name: "", unit: "", price: "", supplier: "", stock: "", minStock: "" });
     setNewPurchase({ item: "", qty: "", unit: "", price: "", supplier: "", date: "" });
     setNewMovement({ item: "", type: "in" as "in" | "out", qty: "", unit: "", ref: "", user: "" });
-    setRestock({ ingredientId: "", qty: "", ref: "" });
   };
 
   const loadInventory = useCallback(async () => {
@@ -203,7 +199,10 @@ export default function InventoryPage() {
   const movementPagination = paginateData(filteredMovements, movementPage, perPage);
 
   const handleAddIngredient = async () => {
-    if (!newIngredient.name || !newIngredient.unit || !newIngredient.price) return;
+    if (!newIngredient.name || !newIngredient.unit || !newIngredient.price || !newIngredient.stock) return;
+    const totalPrice = parsePrice(newIngredient.price);
+    const stock = Number(newIngredient.stock);
+    const pricePerUnit = stock > 0 ? Math.round(totalPrice / stock) : 0;
     try {
       const res = await fetch("/api/inventory", {
         method: "POST",
@@ -212,9 +211,10 @@ export default function InventoryPage() {
           action: "addIngredient",
           name: newIngredient.name,
           unit: newIngredient.unit,
-          price: parsePrice(newIngredient.price),
+          price: pricePerUnit,
           supplier: newIngredient.supplier,
-          stock: Number(newIngredient.stock) || 0,
+          stock: stock,
+          minStock: Number(newIngredient.minStock) || 0,
         }),
       });
       const data = await res.json() as { error?: string };
@@ -277,31 +277,6 @@ export default function InventoryPage() {
       void loadInventory();
     } catch {
       toast.error("Gagal menambah movement");
-    }
-  };
-
-  const handleRestock = async () => {
-    if (!restock.ingredientId || !restock.qty) return;
-    try {
-      const res = await fetch("/api/inventory", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "restock",
-          ingredientId: Number(restock.ingredientId),
-          qty: Number(restock.qty),
-          type: "in",
-          ref: restock.ref || "Restock",
-        }),
-      });
-      const data = await res.json() as { error?: string };
-      if (!res.ok) { toast.error(data.error || "Gagal restock"); return; }
-      toast.success("Restock berhasil!");
-      setMovementPage(1);
-      closeAllModals();
-      void loadInventory();
-    } catch {
-      toast.error("Gagal restock");
     }
   };
 
@@ -424,11 +399,12 @@ export default function InventoryPage() {
                           variant="outline"
                           className="h-7 shrink-0 border-red-300 px-2 text-[10px] text-red-700 hover:bg-red-100"
                           onClick={() => {
-                            setRestock({ ingredientId: String(i.id), qty: "", ref: "" });
-                            setShowRestock(true);
+                            setActiveTab("purchase");
+                            setShowAddPurchase(true);
+                            setNewPurchase({ ...newPurchase, item: i.name, unit: i.unit });
                           }}
                         >
-                          Restock
+                          Purchase
                         </Button>
                       </div>
                     </CardContent>
@@ -865,8 +841,26 @@ export default function InventoryPage() {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs font-medium">Price</Label>
-                  <Input placeholder="e.g. 50.000" type="text" inputMode="numeric" value={formatPrice(newIngredient.price)} onChange={(e) => setNewIngredient({ ...newIngredient, price: formatPrice(e.target.value) })} />
+                  <Label className="text-xs font-medium">Stock Awal</Label>
+                  <Input placeholder="e.g. 5000" type="number" min={1} value={newIngredient.stock} onChange={(e) => setNewIngredient({ ...newIngredient, stock: clampQty(e.target.value) })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Harga Total</Label>
+                  <Input placeholder="e.g. 100.000" type="text" inputMode="numeric" value={formatPrice(newIngredient.price)} onChange={(e) => setNewIngredient({ ...newIngredient, price: formatPrice(e.target.value) })} />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Harga per Unit</Label>
+                  <Input
+                    value={
+                      newIngredient.stock && parsePrice(newIngredient.price) > 0
+                        ? `Rp. ${Math.round(parsePrice(newIngredient.price) / Number(newIngredient.stock)).toLocaleString("id-ID")} / ${newIngredient.unit || "unit"}`
+                        : "-"
+                    }
+                    disabled
+                    className="h-8 w-full rounded-lg text-base md:text-sm bg-muted/50 cursor-not-allowed"
+                  />
                 </div>
               </div>
               <div className="space-y-1">
@@ -886,15 +880,9 @@ export default function InventoryPage() {
                   <Input placeholder="Enter supplier name" className="mt-2" value={newIngredient.supplier === "Other" ? "" : newIngredient.supplier} onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })} />
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">Stock</Label>
-                  <Input placeholder="e.g. 5000" type="number" min={1} value={newIngredient.stock} onChange={(e) => setNewIngredient({ ...newIngredient, stock: clampQty(e.target.value) })} />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium">Min Stock</Label>
-                  <Input placeholder="e.g. 1000" type="number" min={1} value={newIngredient.minStock} onChange={(e) => setNewIngredient({ ...newIngredient, minStock: clampQty(e.target.value) })} />
-                </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Min Stock</Label>
+                <Input placeholder="e.g. 1000" type="number" min={1} value={newIngredient.minStock} onChange={(e) => setNewIngredient({ ...newIngredient, minStock: clampQty(e.target.value) })} />
               </div>
             </div>
             <div className="mt-4 flex gap-2">
@@ -923,7 +911,12 @@ export default function InventoryPage() {
                   value={newPurchase.item}
                   onChange={(e) => {
                     const selected = ingredientsData.find(i => i.name === e.target.value);
-                    setNewPurchase({ ...newPurchase, item: e.target.value, unit: selected?.unit || newPurchase.unit });
+                    setNewPurchase({
+                      ...newPurchase,
+                      item: e.target.value,
+                      unit: selected?.unit || newPurchase.unit,
+                      price: selected ? selected.price.toLocaleString("id-ID") : newPurchase.price,
+                    });
                   }}
                 >
                   <option value="">Pilih ingredient...</option>
@@ -1066,46 +1059,7 @@ export default function InventoryPage() {
         </div>
       )}
 
-      {/* Restock Modal */}
-      {showRestock && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-lg">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Restock Ingredient</h2>
-              <button onClick={closeAllModals} className="rounded-lg p-1 hover:bg-muted">
-                <X className="size-4" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Ingredient</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={restock.ingredientId}
-                  onChange={(e) => setRestock({ ...restock, ingredientId: e.target.value })}
-                >
-                  <option value="">Select ingredient...</option>
-                  {ingredientsData.map((i) => (
-                    <option key={i.id} value={i.id}>{i.name} ({i.stock} {i.unit})</option>
-                  ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                  <Label className="text-xs font-medium">Quantity</Label>
-                  <Input placeholder="e.g. 1000" type="number" min={1} value={restock.qty} onChange={(e) => setRestock({ ...restock, qty: clampQty(e.target.value) })} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-medium">Reference</Label>
-                <Input placeholder="e.g. Restock manual" value={restock.ref} onChange={(e) => setRestock({ ...restock, ref: e.target.value })} />
-              </div>
-            </div>
-            <div className="mt-4 flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={closeAllModals}>Cancel</Button>
-              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleRestock}>Save</Button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* End Modals */}
     </div>
   );
 }

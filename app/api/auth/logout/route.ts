@@ -17,6 +17,11 @@ export async function POST() {
       expires: new Date(0),
       path: "/",
     });
+    response.cookies.set("user_role", "", {
+      httpOnly: false,
+      expires: new Date(0),
+      path: "/",
+    });
 
     return response;
   } catch {

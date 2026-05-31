@@ -115,6 +115,15 @@ export async function POST(request: Request) {
       path: "/",
     });
 
+    // Set user_role cookie for middleware authorization (non-httpOnly so middleware can read it)
+    response.cookies.set("user_role", user.role, {
+      httpOnly: false,
+      secure: isHttps,
+      sameSite: "strict",
+      expires: expiresAt,
+      path: "/",
+    });
+
     return response;
   } catch (err) {
     console.error("Login error:", err);

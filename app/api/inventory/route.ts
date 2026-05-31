@@ -9,6 +9,7 @@ type IngredientRow = {
   price_per_unit: string;
   supplier: string | null;
   stock: string;
+  min_stock: string;
 };
 
 type MovementAggregateRow = {
@@ -65,7 +66,7 @@ export async function GET() {
 
     const [ingredientsResult, movementAggregateResult, purchasesResult, movementsResult] = await Promise.all([
       db.query<IngredientRow>(`
-        SELECT id, name, base_unit, price_per_unit, supplier, stock
+        SELECT id, name, base_unit, price_per_unit, supplier, stock, COALESCE(min_stock, 0) as min_stock
         FROM ingredients
         WHERE is_active = TRUE AND tenant_id = $1
         ORDER BY id
@@ -128,7 +129,7 @@ export async function GET() {
         price: Number(ingredient.price_per_unit),
         supplier: ingredient.supplier || "-",
         stock: Number(ingredient.stock),
-        minStock: getMinStock(ingredient.base_unit),
+        minStock: Number(ingredient.min_stock) || getMinStock(ingredient.base_unit),
         in30d: Number(movement?.qty_in_30d || 0),
         out30d: Number(movement?.qty_out_30d || 0),
       };
@@ -200,9 +201,9 @@ export async function POST(request: Request) {
       }
 
       const result = await db.query<{ id: number }>(
-        `INSERT INTO ingredients (name, base_unit, price_per_unit, supplier, stock, tenant_id)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-        [name.trim(), unit, price, supplier?.trim() || null, stock || 0, tenantId]
+        `INSERT INTO ingredients (name, base_unit, price_per_unit, supplier, stock, min_stock, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+        [name.trim(), unit, price, supplier?.trim() || null, stock || 0, body.minStock || 0, tenantId]
       );
 
       return NextResponse.json({ success: true, id: result.rows[0].id }, { status: 201 });
@@ -317,8 +318,8 @@ export async function POST(request: Request) {
         [poResult.rows[0].id, ingId, qty, ingUnit, pricePerUnit, lineTotal]
       );
 
-      // Update stock (purchase = stock in)
-      await db.query(`UPDATE ingredients SET stock = stock + $1, updated_at = NOW() WHERE id = $2`, [qty, ingId]);
+      // Update stock and price (purchase = stock in, price updated to latest purchase price)
+      await db.query(`UPDATE ingredients SET stock = stock + $1, price_per_unit = $2, updated_at = NOW() WHERE id = $3`, [qty, pricePerUnit, ingId]);
 
       // Create stock movement for the purchase
       const mvCountResult = await db.query<{ count: string }>(
