@@ -7,6 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, Search, Trash2, X, Building2, ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import toast from "react-hot-toast";
 
 type User = {
@@ -364,23 +371,32 @@ export default function UserPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Role</Label>
-                  <select className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-                    <option value="cashier">Cashier</option>
-                    <option value="manager">Manager</option>
-                    {currentRole === "admin" && <option value="admin">Admin</option>}
-                  </select>
+                  <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
+                    <SelectTrigger className="h-8 w-full text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cashier">Cashier</SelectItem>
+                      <SelectItem value="manager">Manager</SelectItem>
+                      {currentRole === "admin" && <SelectItem value="admin">Admin</SelectItem>}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
               {/* Tenant - show for admin, or manager with multiple tenants */}
               {(currentRole === "admin" || tenants.length > 1) && (
               <div className="space-y-1">
                 <Label className="text-xs">Tenant</Label>
-                <select className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm" value={form.tenantId} onChange={(e) => setForm({ ...form, tenantId: e.target.value })}>
-                  <option value="">Pilih tenant...</option>
-                  {tenants.map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </select>
+                <Select value={form.tenantId} onValueChange={(val) => setForm({ ...form, tenantId: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Pilih tenant..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants.map((t) => (
+                      <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               )}
               <div className="space-y-1">
@@ -440,30 +456,31 @@ export default function UserPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs">Tambah Tenant</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={assignForm.tenantId}
-                  onChange={(e) => setAssignForm({ ...assignForm, tenantId: e.target.value })}
-                >
-                  <option value="">Pilih tenant...</option>
-                  {tenants
-                    .filter((t) => !assignModal.userTenants.some((ut) => ut.tenantId === t.id))
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>{t.name}</option>
-                    ))}
-                </select>
+                <Select value={assignForm.tenantId} onValueChange={(val) => setAssignForm({ ...assignForm, tenantId: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Pilih tenant..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {tenants
+                      .filter((t) => !assignModal.userTenants.some((ut) => ut.tenantId === t.id))
+                      .map((t) => (
+                        <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Role di tenant ini</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={assignForm.role}
-                  onChange={(e) => setAssignForm({ ...assignForm, role: e.target.value })}
-                >
-                  <option value="cashier">Cashier</option>
-                  <option value="manager">Manager</option>
-                  <option value="admin">Admin</option>
-                </select>
+                <Select value={assignForm.role} onValueChange={(val) => setAssignForm({ ...assignForm, role: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cashier">Cashier</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" className="flex-1" onClick={() => { setAssignModal(null); setAssignForm({ tenantId: "", role: "manager" }); }}>Tutup</Button>

@@ -31,9 +31,12 @@ import {
   Printer,
   X,
   CheckCircle,
+  Download,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { exportTransactionsPDF, exportTransactionsExcel } from "@/lib/export-transactions";
 
 interface Transaction {
   id: string;
@@ -273,8 +276,38 @@ export default function TransactionsPage() {
   return (
     <div className="flex h-full flex-col overflow-hidden animate-fade-in">
       {/* Header */}
-      <header className="flex h-16 items-center border-b px-4 sm:px-6">
+      <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Transactions</h1>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => {
+              const label = dateFilter === "Custom" && customRange?.from && customRange?.to
+                ? `${format(customRange.from, "dd MMM yyyy")} - ${format(customRange.to, "dd MMM yyyy")}`
+                : dateFilter;
+              void exportTransactionsExcel(filtered, label);
+            }}
+          >
+            <FileText className="size-3.5" />
+            <span className="hidden sm:inline">Excel</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => {
+              const label = dateFilter === "Custom" && customRange?.from && customRange?.to
+                ? `${format(customRange.from, "dd MMM yyyy")} - ${format(customRange.to, "dd MMM yyyy")}`
+                : dateFilter;
+              exportTransactionsPDF(filtered, label);
+            }}
+          >
+            <Download className="size-3.5" />
+            <span className="hidden sm:inline">PDF</span>
+          </Button>
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">

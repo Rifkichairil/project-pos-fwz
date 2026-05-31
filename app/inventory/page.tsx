@@ -18,9 +18,12 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Download,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
+import { exportInventoryPDF, exportInventoryExcel } from "@/lib/export-inventory";
 import {
   Select,
   SelectContent,
@@ -285,22 +288,42 @@ export default function InventoryPage() {
       {/* Header */}
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Inventory</h1>
-        <Button
-          className="h-8 gap-2 rounded-xl bg-primary px-3 text-xs font-medium hover:bg-primary/90 sm:h-9 sm:px-4 sm:text-sm"
-          onClick={() => {
-            if (activeTab === "stock") setShowAddIngredient(true);
-            else if (activeTab === "purchase") setShowAddPurchase(true);
-            else if (activeTab === "movement") setShowAddMovement(true);
-          }}
-        >
-          <Plus className="size-3.5 sm:size-4" />
-          <span className="hidden sm:inline">
-            {activeTab === "stock" && "Add Ingredient"}
-            {activeTab === "purchase" && "Add Purchase"}
-            {activeTab === "movement" && "Add Movement"}
-          </span>
-          <span className="sm:hidden">Add</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => void exportInventoryExcel(ingredientsData, purchasesData, movementsData, activeTab)}
+          >
+            <FileText className="size-3.5" />
+            <span className="hidden sm:inline">Excel</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => exportInventoryPDF(ingredientsData, purchasesData, movementsData, activeTab)}
+          >
+            <Download className="size-3.5" />
+            <span className="hidden sm:inline">PDF</span>
+          </Button>
+          <Button
+            className="h-8 gap-2 rounded-xl bg-primary px-3 text-xs font-medium hover:bg-primary/90 sm:h-9 sm:px-4 sm:text-sm"
+            onClick={() => {
+              if (activeTab === "stock") setShowAddIngredient(true);
+              else if (activeTab === "purchase") setShowAddPurchase(true);
+              else if (activeTab === "movement") setShowAddMovement(true);
+            }}
+          >
+            <Plus className="size-3.5 sm:size-4" />
+            <span className="hidden sm:inline">
+              {activeTab === "stock" && "Add Ingredient"}
+              {activeTab === "purchase" && "Add Purchase"}
+              {activeTab === "movement" && "Add Movement"}
+            </span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </div>
       </header>
 
       {/* Tabs */}
@@ -825,20 +848,20 @@ export default function InventoryPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <Label className="text-xs font-medium">Unit</Label>
-                  <select
-                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                    value={newIngredient.unit}
-                    onChange={(e) => setNewIngredient({ ...newIngredient, unit: e.target.value })}
-                  >
-                    <option value="">Select...</option>
-                    <option value="gram">gram</option>
-                    <option value="ml">ml</option>
-                    <option value="pcs">pcs</option>
-                    <option value="kg">kg</option>
-                    <option value="liter">liter</option>
-                    <option value="pack">pack</option>
-                    <option value="box">box</option>
-                  </select>
+                  <Select value={newIngredient.unit} onValueChange={(val) => setNewIngredient({ ...newIngredient, unit: val })}>
+                    <SelectTrigger className="h-8 w-full text-xs">
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="gram">gram</SelectItem>
+                      <SelectItem value="ml">ml</SelectItem>
+                      <SelectItem value="pcs">pcs</SelectItem>
+                      <SelectItem value="kg">kg</SelectItem>
+                      <SelectItem value="liter">liter</SelectItem>
+                      <SelectItem value="pack">pack</SelectItem>
+                      <SelectItem value="box">box</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs font-medium">Stock Awal</Label>
@@ -865,19 +888,19 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Supplier</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={newIngredient.supplier}
-                  onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })}
-                >
-                  <option value="">Select supplier...</option>
-                  {[...new Set(ingredientsData.map(i => i.supplier))].map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
+                <Select value={newIngredient.supplier} onValueChange={(val) => setNewIngredient({ ...newIngredient, supplier: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Select supplier..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...new Set(ingredientsData.map(i => i.supplier))].filter(Boolean).map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
                 {newIngredient.supplier === "Other" && (
-                  <Input placeholder="Enter supplier name" className="mt-2" value={newIngredient.supplier === "Other" ? "" : newIngredient.supplier} onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })} />
+                  <Input placeholder="Enter supplier name" className="mt-2" onChange={(e) => setNewIngredient({ ...newIngredient, supplier: e.target.value })} />
                 )}
               </div>
               <div className="space-y-1">
@@ -906,24 +929,24 @@ export default function InventoryPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Item Name</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={newPurchase.item}
-                  onChange={(e) => {
-                    const selected = ingredientsData.find(i => i.name === e.target.value);
-                    setNewPurchase({
-                      ...newPurchase,
-                      item: e.target.value,
-                      unit: selected?.unit || newPurchase.unit,
-                      price: selected ? selected.price.toLocaleString("id-ID") : newPurchase.price,
-                    });
-                  }}
-                >
-                  <option value="">Pilih ingredient...</option>
-                  {ingredientsData.map((i) => (
-                    <option key={i.id} value={i.name}>{i.name}</option>
-                  ))}
-                </select>
+                <Select value={newPurchase.item} onValueChange={(val) => {
+                  const selected = ingredientsData.find(i => i.name === val);
+                  setNewPurchase({
+                    ...newPurchase,
+                    item: val,
+                    unit: selected?.unit || newPurchase.unit,
+                    price: selected ? selected.price.toLocaleString("id-ID") : newPurchase.price,
+                  });
+                }}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Pilih ingredient..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ingredientsData.map((i) => (
+                      <SelectItem key={i.id} value={i.name}>{i.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
@@ -946,19 +969,19 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Supplier</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={newPurchase.supplier}
-                  onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })}
-                >
-                  <option value="">Select supplier...</option>
-                  {[...new Set(ingredientsData.map(i => i.supplier))].map((s) => (
-                    <option key={s} value={s}>{s}</option>
-                  ))}
-                  <option value="Other">Other</option>
-                </select>
+                <Select value={newPurchase.supplier} onValueChange={(val) => setNewPurchase({ ...newPurchase, supplier: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Select supplier..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[...new Set(ingredientsData.map(i => i.supplier))].filter(Boolean).map((s) => (
+                      <SelectItem key={s} value={s}>{s}</SelectItem>
+                    ))}
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
                 {newPurchase.supplier === "Other" && (
-                  <Input placeholder="Enter supplier name" className="mt-2" value={newPurchase.supplier === "Other" ? "" : newPurchase.supplier} onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })} />
+                  <Input placeholder="Enter supplier name" className="mt-2" onChange={(e) => setNewPurchase({ ...newPurchase, supplier: e.target.value })} />
                 )}
               </div>
               <div className="space-y-1">
@@ -987,19 +1010,19 @@ export default function InventoryPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Item Name</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={newMovement.item}
-                  onChange={(e) => {
-                    const ing = ingredientsData.find(i => i.name === e.target.value);
-                    setNewMovement({ ...newMovement, item: e.target.value, unit: ing?.unit || newMovement.unit });
-                  }}
-                >
-                  <option value="">Select ingredient...</option>
-                  {ingredientsData.map((i) => (
-                    <option key={i.id} value={i.name}>{i.name} ({i.stock} {i.unit})</option>
-                  ))}
-                </select>
+                <Select value={newMovement.item} onValueChange={(val) => {
+                  const ing = ingredientsData.find(i => i.name === val);
+                  setNewMovement({ ...newMovement, item: val, unit: ing?.unit || newMovement.unit });
+                }}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Select ingredient..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ingredientsData.map((i) => (
+                      <SelectItem key={i.id} value={i.name}>{i.name} ({i.stock} {i.unit})</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Type</Label>
@@ -1038,17 +1061,17 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">User</Label>
-                <select
-                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1 text-base md:text-sm"
-                  value={newMovement.user}
-                  onChange={(e) => setNewMovement({ ...newMovement, user: e.target.value })}
-                >
-                  <option value="">Select user...</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Budi">Budi</option>
-                  <option value="Rudi">Rudi</option>
-                  <option value="Manager">Manager</option>
-                </select>
+                <Select value={newMovement.user} onValueChange={(val) => setNewMovement({ ...newMovement, user: val })}>
+                  <SelectTrigger className="h-8 w-full text-xs">
+                    <SelectValue placeholder="Select user..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Admin">Admin</SelectItem>
+                    <SelectItem value="Budi">Budi</SelectItem>
+                    <SelectItem value="Rudi">Rudi</SelectItem>
+                    <SelectItem value="Manager">Manager</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="mt-4 flex gap-2">

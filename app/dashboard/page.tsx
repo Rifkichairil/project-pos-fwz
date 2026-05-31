@@ -19,7 +19,10 @@ import {
   QrCode,
   Smartphone,
   CalendarDays,
+  Download,
+  FileText,
 } from "lucide-react";
+import { exportDashboardPDF, exportDashboardExcel } from "@/lib/export-pdf";
 
 type Period = "daily" | "weekly" | "monthly" | "yearly" | "custom";
 
@@ -142,6 +145,56 @@ export default function DashboardPage() {
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Dashboard</h1>
+        {data && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg text-xs"
+              onClick={() => {
+                const dateLabel = period === "custom" && dateRange?.from && dateRange?.to
+                  ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                  : period === "daily" ? "Hari Ini" : period === "weekly" ? "Minggu Ini" : period === "monthly" ? "Bulan Ini" : "Tahun Ini";
+                void exportDashboardExcel({
+                  period,
+                  dateLabel,
+                  tenantName: "-",
+                  stats: data.stats,
+                  revenue: data.revenue,
+                  salesChart: data.salesChart,
+                  bestSeller: data.bestSeller,
+                  leastSeller: data.leastSeller,
+                });
+              }}
+            >
+              <FileText className="size-3.5" />
+              <span className="hidden sm:inline">Excel</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg text-xs"
+              onClick={() => {
+                const dateLabel = period === "custom" && dateRange?.from && dateRange?.to
+                  ? `${format(dateRange.from, "dd MMM yyyy")} - ${format(dateRange.to, "dd MMM yyyy")}`
+                  : period === "daily" ? "Hari Ini" : period === "weekly" ? "Minggu Ini" : period === "monthly" ? "Bulan Ini" : "Tahun Ini";
+                exportDashboardPDF({
+                  period,
+                  dateLabel,
+                  tenantName: "-",
+                  stats: data.stats,
+                  revenue: data.revenue,
+                  salesChart: data.salesChart,
+                  bestSeller: data.bestSeller,
+                  leastSeller: data.leastSeller,
+                });
+              }}
+            >
+              <Download className="size-3.5" />
+              <span className="hidden sm:inline">PDF</span>
+            </Button>
+          </div>
+        )}
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
