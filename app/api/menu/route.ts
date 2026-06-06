@@ -12,6 +12,7 @@ type CreateMenuPayload = {
   name?: string;
   category?: string;
   price?: number | string;
+  imageUrl?: string | null;
   ingredients?: MenuIngredientPayload[];
   addonIds?: number[];
 };
@@ -21,6 +22,7 @@ type EditMenuPayload = {
   name?: string;
   category?: string;
   price?: number | string;
+  imageUrl?: string | null;
   ingredients?: MenuIngredientPayload[];
   addonIds?: number[];
 };
@@ -72,13 +74,15 @@ export async function GET() {
         category: string;
         hpp: string;
         selling_price: string;
+        image_url: string | null;
       }>(`
         SELECT
           m.id,
           m.name,
           m.category,
           mp.hpp,
-          mp.selling_price
+          mp.selling_price,
+          m.image_url
         FROM menus m
         JOIN menu_prices mp ON mp.menu_id = m.id AND mp.is_active = TRUE
         WHERE m.is_active = TRUE
@@ -182,6 +186,7 @@ export async function GET() {
         category: row.category,
         hpp: Number(row.hpp),
         price: Number(row.selling_price),
+        imageUrl: row.image_url || null,
         lowStock: inventoryPolicy !== "off" && lowStockMenuMap.has(row.id),
         lowStockItems: lowStockMenuMap.get(row.id) || [],
         soldOut: inventoryPolicy === "strict" && soldOutMenuIds.has(row.id),
@@ -231,11 +236,11 @@ export async function POST(request: Request) {
 
     const menuInsert = await client.query<{ id: number }>(
       `
-        INSERT INTO menus (tenant_id, name, category)
-        VALUES ($1, $2, $3)
+        INSERT INTO menus (tenant_id, name, category, image_url)
+        VALUES ($1, $2, $3, $4)
         RETURNING id
       `,
-      [tenant.context.tenantId, name, category]
+      [tenant.context.tenantId, name, category, body.imageUrl || null]
     );
 
     const menuId = menuInsert.rows[0].id;
@@ -375,10 +380,11 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Menu not found" }, { status: 404 });
     }
 
-    // Update menus table (name, category)
-    if (name || category) {
+    // Update menus table (name, category, image_url)
+    const imageUrl = body.imageUrl !== undefined ? body.imageUrl : undefined;
+    if (name || category || imageUrl !== undefined) {
       const setClauses: string[] = [];
-      const values: (string | number)[] = [];
+      const values: (string | number | null)[] = [];
       let paramIdx = 1;
 
       if (name) {
@@ -388,6 +394,10 @@ export async function PATCH(request: Request) {
       if (category) {
         setClauses.push(`category = $${paramIdx++}`);
         values.push(category);
+      }
+      if (imageUrl !== undefined) {
+        setClauses.push(`image_url = $${paramIdx++}`);
+        values.push(imageUrl || null);
       }
 
       values.push(menuId, tenant.context.tenantId);

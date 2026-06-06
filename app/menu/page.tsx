@@ -17,6 +17,8 @@ import {
   ChevronRight,
   Package,
   Pencil,
+  Upload,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -47,6 +49,7 @@ interface Product {
   category: string;
   hpp: number;
   price: number;
+  imageUrl?: string | null;
   addons?: Array<{ id: number; name: string; price: number }>;
 }
 
@@ -103,6 +106,8 @@ export default function MenuRecipePage() {
     name: "",
     category: "Main Dish",
     price: "",
+    imageUrl: "" as string,
+    imageFile: null as File | null,
     ingredients: [{ name: "", qty: "", unit: "" }] as { name: string; qty: string; unit: string }[],
     addonIds: [] as number[],
   });
@@ -122,6 +127,8 @@ export default function MenuRecipePage() {
     name: "",
     category: "Main Dish",
     price: "",
+    imageUrl: "" as string,
+    imageFile: null as File | null,
     ingredients: [{ name: "", qty: "", unit: "" }] as { name: string; qty: string; unit: string }[],
     addonIds: [] as number[],
   });
@@ -200,8 +207,8 @@ export default function MenuRecipePage() {
         setShowAddMenu(false);
         setShowEditMenu(false);
         setShowAddAddon(false);
-        setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
-        setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
+        setNewMenu({ name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
+        setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] });
         setNewAddonName("");
         setNewAddonPrice("");
       }
@@ -209,6 +216,8 @@ export default function MenuRecipePage() {
     window.addEventListener("keydown", handleEsc);
     return () => window.removeEventListener("keydown", handleEsc);
   }, []);
+
+  const [menuUploading, setMenuUploading] = useState(false);
 
   const handleAddMenu = async () => {
     if (!newMenu.name || !newMenu.price) return;
@@ -225,6 +234,15 @@ export default function MenuRecipePage() {
     if (validIngredients.length === 0) return;
 
     try {
+      // Upload image if selected
+      let imageUrl: string | null = null;
+      if (newMenu.imageFile) {
+        setMenuUploading(true);
+        const { uploadMenuImage } = await import("@/lib/upload-helper");
+        imageUrl = await uploadMenuImage(newMenu.imageFile);
+        setMenuUploading(false);
+      }
+
       const response = await fetch("/api/menu", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -232,6 +250,7 @@ export default function MenuRecipePage() {
           name: newMenu.name,
           category: newMenu.category,
           price: Number(newMenu.price),
+          imageUrl,
           ingredients: validIngredients,
           addonIds: newMenu.addonIds,
         }),
@@ -243,6 +262,7 @@ export default function MenuRecipePage() {
         return;
       }
 
+      toast.success("Menu berhasil ditambahkan!");
       setIsLoading(true);
       await loadMenuData();
 
@@ -250,12 +270,15 @@ export default function MenuRecipePage() {
         name: "",
         category: "Main Dish",
         price: "",
+        imageUrl: "",
+        imageFile: null,
         ingredients: [{ name: "", qty: "", unit: "" }],
         addonIds: [],
       });
       setShowAddMenu(false);
-    } catch {
-      setErrorMessage("Failed to create menu");
+    } catch (err) {
+      setMenuUploading(false);
+      setErrorMessage(err instanceof Error ? err.message : "Failed to create menu");
     }
   };
 
@@ -327,6 +350,8 @@ export default function MenuRecipePage() {
       name: recipe.name,
       category: recipe.category,
       price: product?.price?.toString() || "",
+      imageUrl: product?.imageUrl || "",
+      imageFile: null,
       ingredients: recipe.ingredients.map((ing) => ({
         name: ing.name,
         qty: ing.qty.toString(),
@@ -374,6 +399,18 @@ export default function MenuRecipePage() {
     if (validIngredients.length === 0) return;
 
     try {
+      // Upload new image if selected
+      let imageUrl: string | null | undefined = undefined;
+      if (editMenu.imageFile) {
+        setMenuUploading(true);
+        const { uploadMenuImage } = await import("@/lib/upload-helper");
+        imageUrl = await uploadMenuImage(editMenu.imageFile);
+        setMenuUploading(false);
+      } else if (editMenu.imageUrl === "") {
+        // Image was removed
+        imageUrl = null;
+      }
+
       const response = await fetch("/api/menu", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -382,6 +419,7 @@ export default function MenuRecipePage() {
           name: editMenu.name,
           category: editMenu.category,
           price: Number(editMenu.price),
+          imageUrl,
           ingredients: validIngredients,
           addonIds: editMenu.addonIds,
         }),
@@ -397,8 +435,9 @@ export default function MenuRecipePage() {
       setShowEditMenu(false);
       setIsLoading(true);
       await loadMenuData();
-    } catch {
-      toast.error("Failed to update menu");
+    } catch (err) {
+      setMenuUploading(false);
+      toast.error(err instanceof Error ? err.message : "Failed to update menu");
     }
   };
 
@@ -487,145 +526,126 @@ export default function MenuRecipePage() {
           {activeTab === "recipe" ? (
             <>
               {/* ─── Recipe / BOM ─── */}
-              <div className="flex min-h-0 flex-1 overflow-hidden">
-                {/* Left — Recipe Cards */}
-                <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-                    {filteredRecipes.map((recipe, index) => {
-                      const hpp = calcHPP(recipe.ingredients, ingredientPrices);
-                      return (
-                        <Card
-                          key={recipe.id}
-                          onClick={() => { setSelectedRecipe(recipe); setSidebarOpen(true); }}
-                          className={`cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/30 hover:shadow-sm hover:scale-[1.02] animate-slide-up ${
-                            selectedRecipe?.id === recipe.id ? "border-primary bg-primary/5" : ""
-                          }`}
-                          style={{ animationDelay: `${200 + index * 50}ms` }}
-                        >
-                          <CardContent className="p-3">
-                            <div className="flex items-start gap-2.5">
-                              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                                <Calculator className="size-4 text-primary" />
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold">{recipe.name}</p>
-                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-muted-foreground">
-                                  <span>{recipe.category}</span>
-                                  <span>· {recipe.ingredients.length} bahan</span>
-                                </div>
-                                <p className="mt-1 text-xs font-bold"><span className="font-normal text-muted-foreground">HPP </span>{formatRp(hpp)}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); openEditMenu(recipe); }}
-                                className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                title="Edit menu"
-                              >
-                                <Pencil className="size-3" />
-                              </button>
+              <div className="px-4 py-4 sm:px-6">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                  {filteredRecipes.map((recipe, index) => {
+                    const hpp = calcHPP(recipe.ingredients, ingredientPrices);
+                    return (
+                      <Card
+                        key={recipe.id}
+                        onClick={() => { setSelectedRecipe(recipe); setSidebarOpen(true); }}
+                        className={`cursor-pointer border-border/60 transition-all duration-200 hover:border-primary/30 hover:shadow-sm hover:scale-[1.02] animate-slide-up ${
+                          selectedRecipe?.id === recipe.id ? "border-primary bg-primary/5" : ""
+                        }`}
+                        style={{ animationDelay: `${200 + index * 50}ms` }}
+                      >
+                        <CardContent className="p-3">
+                          <div className="flex items-start gap-2.5">
+                            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                              <Calculator className="size-4 text-primary" />
                             </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-semibold">{recipe.name}</p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0 text-[11px] text-muted-foreground">
+                                <span>{recipe.category}</span>
+                                <span>· {recipe.ingredients.length} bahan</span>
+                              </div>
+                              <p className="mt-1 text-xs font-bold"><span className="font-normal text-muted-foreground">HPP </span>{formatRp(hpp)}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openEditMenu(recipe); }}
+                              className="flex size-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                              title="Edit menu"
+                            >
+                              <Pencil className="size-3" />
+                            </button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* BOM Detail Modal */}
+              {selectedRecipe && sidebarOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSidebarOpen(false)}>
+                  <div className="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl bg-background shadow-xl" onClick={(e) => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="flex items-center gap-3 border-b px-6 py-4">
+                      <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10">
+                        <Calculator className="size-5 text-primary" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-base font-bold">{selectedRecipe.name}</p>
+                          <Badge variant="outline" className="text-[10px] border-slate-200 bg-slate-50 text-slate-700">
+                            {selectedRecipe.category}
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground">{selectedRecipe.ingredients.length} ingredients · HPP {formatRp(calcHPP(selectedRecipe.ingredients, ingredientPrices))}</p>
+                      </div>
+                      <button
+                        onClick={() => setSidebarOpen(false)}
+                        className="flex size-8 items-center justify-center rounded-lg border hover:bg-muted"
+                      >
+                        <X className="size-4" />
+                      </button>
+                    </div>
+
+                    {/* BOM Table */}
+                    <div className="flex-1 overflow-y-auto px-6 py-4">
+                      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill of Materials</h3>
+                      <div className="overflow-x-auto rounded-lg border border-border/60">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="border-b border-border/60 bg-muted/50 text-muted-foreground">
+                              <th className="px-3 py-2.5 font-medium">Bahan</th>
+                              <th className="px-3 py-2.5 font-medium">Supplier</th>
+                              <th className="w-16 px-3 py-2.5 font-medium text-center">Qty</th>
+                              <th className="w-12 px-3 py-2.5 font-medium text-center">Unit</th>
+                              <th className="w-24 px-3 py-2.5 font-medium text-right">Price</th>
+                              <th className="w-24 px-3 py-2.5 font-medium text-right">Subtotal</th>
+                              <th className="w-16 px-3 py-2.5 font-medium text-right">Cost%</th>
+                              <th className="w-20 px-3 py-2.5 font-medium text-right">Stock</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border/60">
+                            {(() => {
+                              const hpp = calcHPP(selectedRecipe.ingredients, ingredientPrices);
+                              return selectedRecipe.ingredients.map((ing) => {
+                                const ip = ingredientPrices[ing.name];
+                                const subtotal = (ip?.price ?? 0) * ing.qty;
+                                const costPct = hpp > 0 ? (subtotal / hpp) * 100 : 0;
+                                return (
+                                  <tr key={ing.name} className="hover:bg-muted/30">
+                                    <td className="px-3 py-2.5 font-medium">{ing.name}</td>
+                                    <td className="px-3 py-2.5 text-muted-foreground">{ip?.supplier ?? "-"}</td>
+                                    <td className="px-3 py-2.5 text-center text-muted-foreground">{ing.qty}</td>
+                                    <td className="px-3 py-2.5 text-center text-muted-foreground">{ing.unit}</td>
+                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{ip ? formatRp(ip.price) + "/" + ip.unit : "-"}</td>
+                                    <td className="px-3 py-2.5 text-right font-semibold">{formatRp(subtotal)}</td>
+                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{costPct.toFixed(1)}%</td>
+                                    <td className="px-3 py-2.5 text-right text-muted-foreground">{ip?.stock?.toLocaleString("id-ID") ?? "-"}</td>
+                                  </tr>
+                                );
+                              });
+                            })()}
+                            <tr className="border-t-2 border-border/60 bg-muted/50">
+                              <td colSpan={7} className="px-3 py-2.5 text-left">
+                                <span className="text-xs font-semibold text-muted-foreground">Total HPP:</span>
+                                <span className="ml-2 text-sm font-bold">{formatRp(calcHPP(selectedRecipe.ingredients, ingredientPrices))}</span>
+                              </td>
+                              <td colSpan={1}></td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* Mobile Overlay */}
-                {selectedRecipe && sidebarOpen && (
-                  <div
-                    className="fixed inset-0 z-40 bg-black/50 min-[1280px]:hidden"
-                    onClick={() => setSidebarOpen(false)}
-                  />
-                )}
-                {/* Right — Recipe Detail Sidebar */}
-                <aside
-                  className={cn(
-                    "w-[85vw] sm:w-[32rem] shrink-0 overflow-y-auto border-l bg-background fixed inset-y-0 right-0 z-50 transition-transform duration-300 min-[1280px]:static min-[1280px]:translate-x-0 min-[1280px]:z-auto",
-                    sidebarOpen ? "translate-x-0" : "translate-x-full min-[1280px]:translate-x-0"
-                  )}
-                >
-                  {selectedRecipe ? (
-                    <div className="p-4 sm:p-6">
-                      {/* Header */}
-                      <div className="mb-6 flex items-center gap-3 animate-slide-up" style={{ animationDelay: '0ms' }}>
-                        <div className="flex size-12 items-center justify-center rounded-xl bg-primary/10">
-                          <Calculator className="size-6 text-primary" />
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <p className="text-base font-bold">{selectedRecipe.name}</p>
-                            <Badge variant="outline" className="text-[10px] border-slate-200 bg-slate-50 text-slate-700">
-                              {selectedRecipe.category}
-                            </Badge>
-                          </div>
-                          <p className="text-[11px] text-muted-foreground">{selectedRecipe.ingredients.length} ingredients · HPP {formatRp(calcHPP(selectedRecipe.ingredients, ingredientPrices))}</p>
-                        </div>
-                        <button
-                          onClick={() => setSidebarOpen(false)}
-                          className="min-[1280px]:hidden flex size-8 items-center justify-center rounded-lg border"
-                        >
-                          <X className="size-4" />
-                        </button>
-                      </div>
-
-                      {/* BOM Table */}
-                      <div className="animate-slide-up" style={{ animationDelay: '50ms' }}>
-                        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill of Materials</h3>
-                        <div className="overflow-x-auto rounded-lg border border-border/60">
-                          <table className="w-full text-left text-xs min-w-125">
-                            <thead>
-                              <tr className="border-b border-border/60 bg-muted/50 text-muted-foreground">
-                                <th className="px-3 py-2.5 font-medium">Bahan</th>
-                                <th className="px-3 py-2.5 font-medium">Supplier</th>
-                                <th className="w-16 px-3 py-2.5 font-medium text-center">Qty</th>
-                                <th className="w-12 px-3 py-2.5 font-medium text-center">Unit</th>
-                                <th className="w-24 px-3 py-2.5 font-medium text-right">Price</th>
-                                <th className="w-24 px-3 py-2.5 font-medium text-right">Subtotal</th>
-                                <th className="w-16 px-3 py-2.5 font-medium text-right">Cost%</th>
-                                <th className="w-20 px-3 py-2.5 font-medium text-right">Stock</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border/60">
-                              {(() => {
-                                const hpp = calcHPP(selectedRecipe.ingredients, ingredientPrices);
-                                return selectedRecipe.ingredients.map((ing, index) => {
-                                  const ip = ingredientPrices[ing.name];
-                                  const subtotal = (ip?.price ?? 0) * ing.qty;
-                                  const costPct = hpp > 0 ? (subtotal / hpp) * 100 : 0;
-                                  return (
-                                    <tr key={ing.name} className="hover:bg-muted/30 transition-all duration-200 animate-slide-up" style={{ animationDelay: `${100 + index * 30}ms` }}>
-                                      <td className="px-3 py-2.5 font-medium">{ing.name}</td>
-                                      <td className="px-3 py-2.5 text-muted-foreground">{ip?.supplier ?? "-"}</td>
-                                      <td className="px-3 py-2.5 text-center text-muted-foreground">{ing.qty}</td>
-                                      <td className="px-3 py-2.5 text-center text-muted-foreground">{ing.unit}</td>
-                                      <td className="px-3 py-2.5 text-right text-muted-foreground">{ip ? formatRp(ip.price) + "/" + ip.unit : "-"}</td>
-                                      <td className="px-3 py-2.5 text-right font-semibold">{formatRp(subtotal)}</td>
-                                      <td className="px-3 py-2.5 text-right text-muted-foreground">{costPct.toFixed(1)}%</td>
-                                      <td className="px-3 py-2.5 text-right text-muted-foreground">{ip?.stock?.toLocaleString("id-ID") ?? "-"}</td>
-                                    </tr>
-                                  );
-                                });
-                              })()}
-                              <tr className="border-t-2 border-border/60 bg-muted/50">
-                                <td colSpan={7} className="px-3 py-2.5 text-left">
-                                  <span className="text-xs font-semibold text-muted-foreground">Total HPP:</span>
-                                  <span className="ml-2 text-sm font-bold">{formatRp(calcHPP(selectedRecipe.ingredients, ingredientPrices))}</span>
-                                </td>
-                                <td colSpan={1}></td>
-                              </tr>
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground animate-fade-in">
-                      Select a recipe to view BOM details
-                    </div>
-                  )}
-                </aside>
-              </div>
+              )}
             </>
           ) : activeTab === "pricing" ? (
             <>
@@ -872,12 +892,51 @@ export default function MenuRecipePage() {
           <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-background shadow-lg">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Add Menu</h2>
-              <button onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Gambar Menu</Label>
+                  <div className="flex items-center gap-3">
+                    {(newMenu.imageFile || newMenu.imageUrl) ? (
+                      <div className="relative">
+                        <img
+                          src={newMenu.imageFile ? URL.createObjectURL(newMenu.imageFile) : newMenu.imageUrl}
+                          alt="Preview"
+                          className="h-20 w-20 rounded-lg border object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setNewMenu({ ...newMenu, imageUrl: "", imageFile: null })}
+                          className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors">
+                        <Upload className="size-5 text-muted-foreground" />
+                        <span className="text-[9px] text-muted-foreground">Upload</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 1024 * 1024) { toast.error("Maks 1MB"); return; }
+                              setNewMenu({ ...newMenu, imageFile: file });
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-muted-foreground">Maks 1MB. JPG, PNG, WebP</p>
+                  </div>
+                </div>
                 <div className="space-y-1">
                   <Label className="text-xs font-medium">Name</Label>
                   <Input placeholder="e.g. Nasi Goreng" value={newMenu.name} onChange={(e) => setNewMenu({ ...newMenu, name: e.target.value })} />
@@ -980,8 +1039,8 @@ export default function MenuRecipePage() {
               </div>
             </div>
             <div className="flex gap-2 border-t px-6 py-4">
-              <Button variant="outline" className="flex-1" onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
-              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleAddMenu}>Save</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowAddMenu(false); setNewMenu({ name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
+              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleAddMenu} disabled={menuUploading}>{menuUploading ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />Uploading...</> : "Save"}</Button>
             </div>
           </div>
         </div>
@@ -993,12 +1052,51 @@ export default function MenuRecipePage() {
           <div className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-background shadow-lg">
             <div className="flex items-center justify-between border-b px-6 py-4">
               <h2 className="text-lg font-semibold">Edit Menu</h2>
-              <button onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
+              <button onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }} className="rounded-lg p-1 hover:bg-muted">
                 <X className="size-4" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-xs font-medium">Gambar Menu</Label>
+                  <div className="flex items-center gap-3">
+                    {(editMenu.imageFile || editMenu.imageUrl) ? (
+                      <div className="relative">
+                        <img
+                          src={editMenu.imageFile ? URL.createObjectURL(editMenu.imageFile) : editMenu.imageUrl}
+                          alt="Preview"
+                          className="h-20 w-20 rounded-lg border object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditMenu({ ...editMenu, imageUrl: "", imageFile: null })}
+                          className="absolute -right-1.5 -top-1.5 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors">
+                        <Upload className="size-5 text-muted-foreground" />
+                        <span className="text-[9px] text-muted-foreground">Upload</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              if (file.size > 1024 * 1024) { toast.error("Maks 1MB"); return; }
+                              setEditMenu({ ...editMenu, imageFile: file });
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                    <p className="text-[10px] text-muted-foreground">Maks 1MB. JPG, PNG, WebP</p>
+                  </div>
+                </div>
                 <div className="space-y-1">
                   <Label className="text-xs font-medium">Name</Label>
                   <Input placeholder="e.g. Nasi Goreng" value={editMenu.name} onChange={(e) => setEditMenu({ ...editMenu, name: e.target.value })} />
@@ -1101,8 +1199,8 @@ export default function MenuRecipePage() {
               </div>
             </div>
             <div className="flex gap-2 border-t px-6 py-4">
-              <Button variant="outline" className="flex-1" onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
-              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleEditMenu}>Save Changes</Button>
+              <Button variant="outline" className="flex-1" onClick={() => { setShowEditMenu(false); setEditMenu({ id: 0, name: "", category: "Main Dish", price: "", imageUrl: "", imageFile: null, ingredients: [{ name: "", qty: "", unit: "" }], addonIds: [] }); }}>Cancel</Button>
+              <Button className="flex-1 bg-primary hover:bg-primary/90" onClick={handleEditMenu} disabled={menuUploading}>{menuUploading ? <><Loader2 className="size-3.5 animate-spin mr-1.5" />Uploading...</> : "Save Changes"}</Button>
             </div>
           </div>
         </div>

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Store, MapPin, Wifi, Percent, QrCode, Package, Upload, Coins } from "lucide-react";
+import { Store, MapPin, Wifi, Percent, QrCode, Package, Upload, Coins, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -77,25 +77,24 @@ export default function SettingsPage() {
     void loadSettings();
   }, []);
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [uploading, setUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("File harus berupa gambar");
-      return;
+    setUploading(true);
+    try {
+      const { uploadQrisImage } = await import("@/lib/upload-helper");
+      const url = await uploadQrisImage(file);
+      setQrisImageUrl(url);
+      toast.success("Gambar QRIS berhasil diupload!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload gagal");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
-
-    if (file.size > 2 * 1024 * 1024) {
-      toast.error("Ukuran file maksimal 2MB");
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      setQrisImageUrl(reader.result as string);
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
@@ -195,7 +194,7 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label className="text-xs">Gambar QRIS</Label>
-                <p className="text-[10px] text-muted-foreground">Upload gambar QR Code QRIS untuk pembayaran (maks 2MB)</p>
+                <p className="text-[10px] text-muted-foreground">Upload gambar QR Code QRIS untuk pembayaran (maks 1MB)</p>
                 <div className="flex items-start gap-4">
                   {qrisImageUrl ? (
                     <div className="relative">
@@ -210,11 +209,20 @@ export default function SettingsPage() {
                     </div>
                   ) : (
                     <div
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex h-32 w-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                      onClick={() => !uploading && fileInputRef.current?.click()}
+                      className={cn("flex h-32 w-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-colors", uploading && "pointer-events-none opacity-50")}
                     >
-                      <Upload className="size-6 text-muted-foreground" />
-                      <span className="text-[10px] text-muted-foreground">Upload QRIS</span>
+                      {uploading ? (
+                        <>
+                          <Loader2 className="size-6 text-muted-foreground animate-spin" />
+                          <span className="text-[10px] text-muted-foreground">Uploading...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="size-6 text-muted-foreground" />
+                          <span className="text-[10px] text-muted-foreground">Upload QRIS</span>
+                        </>
+                      )}
                     </div>
                   )}
                   <input
@@ -225,8 +233,8 @@ export default function SettingsPage() {
                     className="hidden"
                   />
                   {qrisImageUrl && (
-                    <Button variant="outline" size="sm" className="text-xs" onClick={() => fileInputRef.current?.click()}>
-                      Ganti Gambar
+                    <Button variant="outline" size="sm" className="text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+                      {uploading ? "Uploading..." : "Ganti Gambar"}
                     </Button>
                   )}
                 </div>

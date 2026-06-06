@@ -114,6 +114,7 @@ type MenuApiResponse = {
     name: string;
     category: string;
     price: number;
+    imageUrl?: string | null;
     lowStock?: boolean;
     lowStockItems?: string[];
     soldOut?: boolean;
@@ -298,7 +299,7 @@ export default function PosPage() {
         name: product.name,
         category: product.category,
         price: product.price,
-        image: fallbackMenuImage,
+        image: product.imageUrl || fallbackMenuImage,
         lowStock: product.lowStock || false,
         lowStockItems: product.lowStockItems || [],
         soldOut: product.soldOut || false,

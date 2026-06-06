@@ -61,9 +61,9 @@ export function middleware(request: NextRequest) {
 
   // --- API Route restrictions ---
   if (pathname.startsWith("/api")) {
-    // Unauthenticated: only allow /api/auth/login
+    // Unauthenticated: only allow /api/auth/login and /api/uploadthing (callback from uploadthing server)
     if (!sessionToken) {
-      if (pathname === "/api/auth/login") return NextResponse.next();
+      if (pathname === "/api/auth/login" || pathname.startsWith("/api/uploadthing")) return NextResponse.next();
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
