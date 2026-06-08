@@ -33,6 +33,7 @@ import {
   CheckCircle,
   Download,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
@@ -279,6 +280,16 @@ export default function TransactionsPage() {
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Transactions</h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => void loadTransactions()}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
           <Button
             variant="outline"
             size="sm"

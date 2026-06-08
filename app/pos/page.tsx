@@ -711,6 +711,28 @@ export default function PosPage() {
     }
   };
 
+  const unrefundItem = async (orderCode: string, itemName: string, itemIndex: number) => {
+    try {
+      const response = await fetch("/api/pos/unrefund", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderCode, itemName, itemIndex }),
+      });
+
+      const data = await response.json() as { success?: boolean; error?: string };
+
+      if (!response.ok) {
+        toast.error(data.error || "Gagal membatalkan refund");
+        return;
+      }
+
+      toast.success(`Refund ${itemName} dibatalkan`);
+      void loadBoardOrders(false);
+    } catch {
+      toast.error("Gagal memproses unrefund");
+    }
+  };
+
   const removeCartItem = (index: number) => {
     setCart((prev) => prev.filter((_, i) => i !== index));
     if (editingCartItem === index) setEditingCartItem(null);
@@ -1354,6 +1376,18 @@ export default function PosPage() {
                                                 title="Refund item ini"
                                               >
                                                 <RotateCcw className="size-3" />
+                                              </button>
+                                            )}
+                                            {m.refunded && order.status === "Done" && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  void unrefundItem(order.orderCode, m.name, idx);
+                                                }}
+                                                className="rounded p-0.5 text-emerald-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                                title="Batalkan refund"
+                                              >
+                                                <RotateCcw className="size-3 scale-x-[-1]" />
                                               </button>
                                             )}
                                           </div>

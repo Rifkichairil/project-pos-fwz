@@ -7,6 +7,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import {
   TrendingUp,
@@ -21,6 +22,7 @@ import {
   CalendarDays,
   Download,
   FileText,
+  RefreshCw,
 } from "lucide-react";
 import { exportDashboardPDF, exportDashboardExcel } from "@/lib/export-pdf";
 
@@ -101,7 +103,7 @@ export default function DashboardPage() {
     setVisible(false);
     const t = setTimeout(() => setVisible(true), 140);
     return () => clearTimeout(t);
-  }, [period, data]);
+  }, [period]);
 
   const totalRevenue = data?.stats.totalRevenue ?? 0;
   const totalTransactions = data?.stats.totalTransactions ?? 0;
@@ -145,8 +147,19 @@ export default function DashboardPage() {
     <div className="flex h-full flex-col overflow-hidden">
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Dashboard</h1>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => void loadDashboard(period, dateRange)}
+            disabled={loading}
+          >
+            <RefreshCw className={cn("size-3.5", loading && "animate-spin")} />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         {data && (
-          <div className="flex items-center gap-2">
+          <>
             <Button
               variant="outline"
               size="sm"
@@ -193,8 +206,9 @@ export default function DashboardPage() {
               <Download className="size-3.5" />
               <span className="hidden sm:inline">PDF</span>
             </Button>
-          </div>
+          </>
         )}
+        </div>
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 sm:p-6">
@@ -291,18 +305,28 @@ export default function DashboardPage() {
                   <CardTitle className="text-xs font-semibold sm:text-sm">{chartTitleLeft}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-end gap-1 pt-2" style={{ height: 140 }}>
-                    {salesChart.map((bar) => (
-                      <div key={bar.label} className="flex h-full flex-1 flex-col justify-end items-center gap-1">
-                        <div
-                          className="w-full rounded-t bg-amber-500/80 hover:bg-amber-500"
-                          title={`${bar.label} • ${bar.trx.toLocaleString("id-ID")} transaksi - ${bar.val.toLocaleString("en-US")}`}
-                          style={{ height: visible ? `${(bar.val / maxLeft) * 100}%` : "0%", transition: "height 3.4s cubic-bezier(0.22, 1, 0.36, 1)", minHeight: bar.val > 0 ? 4 : 0 }}
-                        />
-                        <span className="text-[9px] text-muted-foreground sm:text-[10px]">{bar.label}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <TooltipProvider>
+                    <div className="flex items-end gap-1 pt-2" style={{ height: 140 }}>
+                      {salesChart.map((bar) => (
+                        <Tooltip key={bar.label}>
+                          <TooltipTrigger
+                            className="flex h-full flex-1 flex-col justify-end items-center gap-1 cursor-pointer"
+                          >
+                            <div
+                              className="w-full rounded-t bg-amber-500/80 hover:bg-amber-500 active:bg-amber-500"
+                              style={{ height: visible ? `${(bar.val / maxLeft) * 100}%` : "0%", transition: "height 3.4s cubic-bezier(0.22, 1, 0.36, 1)", minHeight: bar.val > 0 ? 4 : 0 }}
+                            />
+                            <span className="text-[9px] text-muted-foreground sm:text-[10px]">{bar.label}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-center">
+                            <div className="font-medium">{bar.label}</div>
+                            <div>{bar.trx.toLocaleString("id-ID")} transaksi</div>
+                            <div>{formatRp(bar.val)}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  </TooltipProvider>
                 </CardContent>
               </Card>
 
@@ -312,18 +336,28 @@ export default function DashboardPage() {
                   <CardTitle className="text-xs font-semibold sm:text-sm">{chartTitleRight}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-end gap-1.5 pt-2" style={{ height: 140 }}>
-                    {comparisonChart.map((bar) => (
-                      <div key={bar.label} className="flex h-full flex-1 flex-col justify-end items-center gap-1">
-                        <div
-                          className="w-full rounded-t bg-primary/70 hover:bg-primary"
-                          title={`${bar.label} • ${bar.trx.toLocaleString("id-ID")} transaksi - ${bar.val.toLocaleString("en-US")}`}
-                          style={{ height: visible ? `${(bar.val / maxRight) * 100}%` : "0%", transition: "height 3.6s cubic-bezier(0.22, 1, 0.36, 1) 0.25s", minHeight: bar.val > 0 ? 4 : 0 }}
-                        />
-                        <span className="text-[9px] text-muted-foreground sm:text-[10px]">{bar.label}</span>
-                      </div>
-                    ))}
-                  </div>
+                  <TooltipProvider>
+                    <div className="flex items-end gap-1.5 pt-2" style={{ height: 140 }}>
+                      {comparisonChart.map((bar) => (
+                        <Tooltip key={bar.label}>
+                          <TooltipTrigger
+                            className="flex h-full flex-1 flex-col justify-end items-center gap-1 cursor-pointer"
+                          >
+                            <div
+                              className="w-full rounded-t bg-primary/70 hover:bg-primary active:bg-primary"
+                              style={{ height: visible ? `${(bar.val / maxRight) * 100}%` : "0%", transition: "height 3.6s cubic-bezier(0.22, 1, 0.36, 1) 0.25s", minHeight: bar.val > 0 ? 4 : 0 }}
+                            />
+                            <span className="text-[9px] text-muted-foreground sm:text-[10px]">{bar.label}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="text-center">
+                            <div className="font-medium">{bar.label}</div>
+                            <div>{bar.trx.toLocaleString("id-ID")} transaksi</div>
+                            <div>{formatRp(bar.val)}</div>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
+                    </div>
+                  </TooltipProvider>
                 </CardContent>
               </Card>
             </div>

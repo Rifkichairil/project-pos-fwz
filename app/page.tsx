@@ -67,8 +67,8 @@ export default function LoginPage() {
             another devices.
           </p>
 
-          {/* Social Login */}
-          <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:gap-3">
+          {/* Social Login - hidden for now */}
+          {/* <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:gap-3">
             <Button
               variant="outline"
               className="flex-1 gap-2 rounded-full border-border bg-background text-sm font-normal hover:bg-muted"
@@ -90,18 +90,18 @@ export default function LoginPage() {
               </svg>
               Apple
             </Button>
-          </div>
+          </div> */}
 
-          {/* Divider */}
-          <div className="relative mt-6 flex items-center justify-center">
+          {/* Divider - hidden for now */}
+          {/* <div className="relative mt-6 flex items-center justify-center">
             <Separator className="absolute w-full" />
             <span className="relative bg-background px-3 text-xs text-muted-foreground">
               or
             </span>
-          </div>
+          </div> */}
 
           {/* Form */}
-          <form className="mt-6 space-y-4" onSubmit={handleLogin}>
+          <form className="mt-8 space-y-4" onSubmit={handleLogin}>
             <div>
               <Label htmlFor="username" className="sr-only">
                 Username

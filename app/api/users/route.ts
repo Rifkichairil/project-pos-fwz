@@ -11,6 +11,9 @@ type UserRow = {
   phone: string | null;
   role: string;
   is_active: boolean;
+  subscription_status: string;
+  subscription_start: string | null;
+  subscription_end: string | null;
   created_at: string;
   tenant_name: string | null;
 };
@@ -29,22 +32,67 @@ export async function GET() {
   try {
     let result;
     if (session.role === "admin") {
-      // Admin can see all users
+      // Admin can see all users with subscription from their own (for manager) or from manager of their tenant (for cashier)
       result = await db.query<UserRow>(
-        `SELECT u.id, u.fullname, u.username, u.email, u.phone, u.role, u.is_active, u.created_at::text,
-                t.name AS tenant_name
+        `SELECT u.id, u.fullname, u.username, u.email, u.phone, u.role, u.is_active, 
+                u.created_at::text,
+                t.name AS tenant_name,
+                COALESCE(
+                  -- For manager, use their own subscription
+                  CASE WHEN u.role = 'manager' THEN u.subscription_status END,
+                  -- For cashier, get subscription from manager of their tenant
+                  m.subscription_status,
+                  'inactive'
+                ) AS subscription_status,
+                COALESCE(
+                  CASE WHEN u.role = 'manager' THEN u.subscription_start::text END,
+                  m.subscription_start::text
+                ) AS subscription_start,
+                COALESCE(
+                  CASE WHEN u.role = 'manager' THEN u.subscription_end::text END,
+                  m.subscription_end::text
+                ) AS subscription_end
          FROM users u
          LEFT JOIN tenants t ON t.id = u.active_tenant_id
+         -- For cashiers, find manager's subscription for their tenant
+         LEFT JOIN LATERAL (
+           SELECT um.subscription_status, um.subscription_start, um.subscription_end
+           FROM user_tenants utm
+           JOIN users um ON um.id = utm.user_id AND um.role = 'manager' AND um.is_active = TRUE
+           WHERE utm.tenant_id = u.active_tenant_id
+           LIMIT 1
+         ) m ON u.role = 'cashier'
          WHERE u.is_active = TRUE
          ORDER BY u.id`
       );
     } else {
       // Non-admin can only see users in their tenant
       result = await db.query<UserRow>(
-        `SELECT u.id, u.fullname, u.username, u.email, u.phone, u.role, u.is_active, u.created_at::text,
-                t.name AS tenant_name
+        `SELECT u.id, u.fullname, u.username, u.email, u.phone, u.role, u.is_active,
+                u.created_at::text,
+                t.name AS tenant_name,
+                COALESCE(
+                  CASE WHEN u.role = 'manager' THEN u.subscription_status END,
+                  m.subscription_status,
+                  'inactive'
+                ) AS subscription_status,
+                COALESCE(
+                  CASE WHEN u.role = 'manager' THEN u.subscription_start::text END,
+                  m.subscription_start::text
+                ) AS subscription_start,
+                COALESCE(
+                  CASE WHEN u.role = 'manager' THEN u.subscription_end::text END,
+                  m.subscription_end::text
+                ) AS subscription_end
          FROM users u
          LEFT JOIN tenants t ON t.id = u.active_tenant_id
+         LEFT JOIN LATERAL (
+           SELECT um.subscription_status, um.subscription_start, um.subscription_end
+           FROM user_tenants utm
+           JOIN users um ON um.id = utm.user_id AND um.role = 'manager' AND um.is_active = TRUE
+           WHERE utm.tenant_id = u.active_tenant_id
+           LIMIT 1
+         ) m ON u.role = 'cashier'
          WHERE u.is_active = TRUE AND u.active_tenant_id = $1
          ORDER BY u.id`,
         [session.tenantId]
@@ -79,6 +127,11 @@ export async function GET() {
         role: row.role,
         tenant: row.tenant_name || "-",
         tenants: userTenantsMap[row.id] || [],
+        subscription: {
+          status: row.subscription_status,
+          start: row.subscription_start ? new Date(row.subscription_start).toLocaleDateString("id-ID") : null,
+          end: row.subscription_end ? new Date(row.subscription_end).toLocaleDateString("id-ID") : null,
+        },
         createdAt: new Date(row.created_at).toLocaleDateString("id-ID"),
       })),
     });
@@ -102,6 +155,8 @@ export async function POST(request: Request) {
       password?: string;
       role?: string;
       tenantId?: string | number;
+      subscriptionStart?: string;
+      subscriptionEnd?: string;
     };
 
     const name = body.name?.trim();
@@ -111,6 +166,8 @@ export async function POST(request: Request) {
     const password = body.password || "";
     const role = ["admin", "manager", "cashier"].includes(body.role || "") ? body.role : "cashier";
     let tenantId = Number(body.tenantId) || null;
+    const subscriptionStart = body.subscriptionStart || null;
+    const subscriptionEnd = body.subscriptionEnd || null;
 
     if (!name || !username || !email || !password) {
       return NextResponse.json({ error: "Semua field wajib diisi" }, { status: 400 });
@@ -130,13 +187,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tidak memiliki izin membuat admin" }, { status: 403 });
     }
 
+    // Determine subscription status
+    let subscriptionStatus = "inactive";
+    if (subscriptionStart && subscriptionEnd) {
+      const now = new Date();
+      const start = new Date(subscriptionStart);
+      const end = new Date(subscriptionEnd);
+      if (now >= start && now <= end) {
+        subscriptionStatus = "active";
+      } else if (now > end) {
+        subscriptionStatus = "expired";
+      }
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     await client.query("BEGIN");
 
     const result = await client.query<{ id: number }>(
-      `INSERT INTO users (fullname, username, email, phone, password, role, active_tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-      [name, username, email, phone, hashedPassword, role, tenantId]
+      `INSERT INTO users (fullname, username, email, phone, password, role, active_tenant_id, subscription_status, subscription_start, subscription_end) 
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+      [name, username, email, phone, hashedPassword, role, tenantId, subscriptionStatus, subscriptionStart, subscriptionEnd]
     );
 
     await client.query(
@@ -244,6 +315,54 @@ export async function PATCH(request: Request) {
     }
   } catch {
     return NextResponse.json({ error: "Failed to update tenant assignment" }, { status: 500 });
+  }
+}
+
+export async function PUT(request: Request) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  // Only admin can update subscription
+  if (session.role !== "admin") {
+    return NextResponse.json({ error: "Hanya admin yang dapat update subscription" }, { status: 403 });
+  }
+
+  try {
+    const body = (await request.json()) as {
+      userId?: number;
+      subscriptionStart?: string;
+      subscriptionEnd?: string;
+    };
+
+    const userId = Number(body.userId);
+    const subscriptionStart = body.subscriptionStart || null;
+    const subscriptionEnd = body.subscriptionEnd || null;
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId wajib diisi" }, { status: 400 });
+    }
+
+    // Determine subscription status
+    let subscriptionStatus = "inactive";
+    if (subscriptionStart && subscriptionEnd) {
+      const now = new Date();
+      const start = new Date(subscriptionStart);
+      const end = new Date(subscriptionEnd);
+      if (now >= start && now <= end) {
+        subscriptionStatus = "active";
+      } else if (now > end) {
+        subscriptionStatus = "expired";
+      }
+    }
+
+    await db.query(
+      `UPDATE users SET subscription_status = $1, subscription_start = $2, subscription_end = $3, updated_at = NOW() WHERE id = $4`,
+      [subscriptionStatus, subscriptionStart, subscriptionEnd, userId]
+    );
+
+    return NextResponse.json({ success: true, message: "Subscription berhasil diupdate" });
+  } catch {
+    return NextResponse.json({ error: "Failed to update subscription" }, { status: 500 });
   }
 }
 

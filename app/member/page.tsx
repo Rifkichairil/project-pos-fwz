@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Plus, Search, Star, UtensilsCrossed, Clock, ShoppingCart, Gift, Wallet } from "lucide-react";
+import { Plus, Search, Star, UtensilsCrossed, Clock, ShoppingCart, Gift, Wallet, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type MemberTier = "Bronze" | "Silver" | "Gold" | "Platinum";
@@ -110,11 +110,22 @@ export default function MemberPage() {
     <div className="flex h-full flex-col overflow-hidden animate-fade-in">
       <header className="flex h-16 items-center justify-between border-b px-4 sm:px-6">
         <h1 className="text-base font-semibold sm:text-lg">Member Management</h1>
-        <Button className="h-8 gap-2 rounded-xl bg-primary px-3 text-xs font-medium hover:bg-primary/90 sm:h-9 sm:px-4 sm:text-sm">
-          <Plus className="size-3.5 sm:size-4" />
-          <span className="hidden sm:inline">Add Member</span>
-          <span className="sm:hidden">Add</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1.5 rounded-lg text-xs"
+            onClick={() => void loadMembers()}
+          >
+            <RefreshCw className="size-3.5" />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
+          <Button className="h-8 gap-2 rounded-xl bg-primary px-3 text-xs font-medium hover:bg-primary/90 sm:h-9 sm:px-4 sm:text-sm">
+            <Plus className="size-3.5 sm:size-4" />
+            <span className="hidden sm:inline">Add Member</span>
+            <span className="sm:hidden">Add</span>
+          </Button>
+        </div>
       </header>
 
       <div className="flex flex-1 overflow-hidden">

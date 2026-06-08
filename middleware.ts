@@ -42,6 +42,7 @@ const cashierApiPaths = [
   "/api/addons",
   "/api/member",
   "/api/transactions",
+  "/api/settings",
 ];
 
 export function middleware(request: NextRequest) {

@@ -22,6 +22,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import SubscriptionAlert from "@/components/SubscriptionAlert";
 
 const allNavItems = [
   { icon: LayoutDashboard, label: "Dashboard", href: "/dashboard", roles: ["admin", "manager"] },
@@ -210,6 +211,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       {/* Main */}
       <main className="flex flex-1 flex-col overflow-hidden">
+        {/* Subscription Alert */}
+        <SubscriptionAlert />
         {/* Mobile Header */}
         <div className="flex h-16 items-center gap-4 border-b bg-background px-4 lg:hidden">
           <button

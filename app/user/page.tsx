@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Trash2, X, Building2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, Trash2, X, Building2, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePicker } from "@/components/ui/date-picker";
 import toast from "react-hot-toast";
 
 type User = {
@@ -25,6 +26,11 @@ type User = {
   role: string;
   tenant: string;
   tenants?: { tenantId: number; tenantName: string; role: string }[];
+  subscription: {
+    status: string;
+    start: string | null;
+    end: string | null;
+  };
   createdAt: string;
 };
 
@@ -42,6 +48,8 @@ export default function UserPage() {
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" });
+  const [subsStart, setSubsStart] = useState<Date | undefined>(undefined);
+  const [subsEnd, setSubsEnd] = useState<Date | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [currentRole, setCurrentRole] = useState("");
   const [page, setPage] = useState(1);
@@ -49,6 +57,8 @@ export default function UserPage() {
   const [assignModal, setAssignModal] = useState<{ userId: number; userName: string; userTenants: { tenantId: number; tenantName: string; role: string }[] } | null>(null);
   const [assignForm, setAssignForm] = useState({ tenantId: "", role: "manager" });
   const [assignSaving, setAssignSaving] = useState(false);
+  const [subscriptionModal, setSubscriptionModal] = useState<{ userId: number; userName: string; start: Date | undefined; end: Date | undefined } | null>(null);
+  const [subscriptionSaving, setSubscriptionSaving] = useState(false);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -83,18 +93,28 @@ export default function UserPage() {
       toast.error("Semua field wajib diisi");
       return;
     }
+    if (form.role === "manager" && subsStart && subsEnd && subsEnd < subsStart) {
+      toast.error("End date tidak boleh lebih kecil dari start date");
+      return;
+    }
     setSaving(true);
     try {
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          ...form,
+          subscriptionStart: subsStart?.toISOString() || null,
+          subscriptionEnd: subsEnd?.toISOString() || null,
+        }),
       });
       const data = await res.json() as { error?: string };
       if (!res.ok) { toast.error(data.error || "Gagal membuat user"); return; }
       toast.success("User berhasil dibuat!");
       setShowCreate(false);
       setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" });
+      setSubsStart(undefined);
+      setSubsEnd(undefined);
       void loadUsers();
     } catch {
       toast.error("Gagal membuat user");
@@ -179,6 +199,35 @@ export default function UserPage() {
     }
   };
 
+  const handleUpdateSubscription = async () => {
+    if (!subscriptionModal) return;
+    if (subscriptionModal.start && subscriptionModal.end && subscriptionModal.end < subscriptionModal.start) {
+      toast.error("End date tidak boleh lebih kecil dari start date");
+      return;
+    }
+    setSubscriptionSaving(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: subscriptionModal.userId,
+          subscriptionStart: subscriptionModal.start?.toISOString() || null,
+          subscriptionEnd: subscriptionModal.end?.toISOString() || null,
+        }),
+      });
+      const data = await res.json() as { error?: string };
+      if (!res.ok) { toast.error(data.error || "Gagal update subscription"); return; }
+      toast.success("Subscription berhasil diupdate!");
+      setSubscriptionModal(null);
+      void loadUsers();
+    } catch {
+      toast.error("Gagal update subscription");
+    } finally {
+      setSubscriptionSaving(false);
+    }
+  };
+
   const filtered = users.filter((u) =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase()) ||
@@ -193,6 +242,13 @@ export default function UserPage() {
     if (role === "admin") return <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-600 text-[10px]">Admin</Badge>;
     if (role === "manager") return <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-600 text-[10px]">Manager</Badge>;
     return <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-600 text-[10px]">Cashier</Badge>;
+  };
+
+  const subscriptionBadge = (status: string) => {
+    if (status === "active") return <Badge variant="outline" className="border-green-200 bg-green-50 text-green-600 text-[10px]">Active</Badge>;
+    if (status === "expired") return <Badge variant="outline" className="border-orange-200 bg-orange-50 text-orange-600 text-[10px]">Expired</Badge>;
+    if (status === "cancelled") return <Badge variant="outline" className="border-red-200 bg-red-50 text-red-600 text-[10px]">Cancelled</Badge>;
+    return <Badge variant="outline" className="border-gray-200 bg-gray-50 text-gray-600 text-[10px]">Inactive</Badge>;
   };
 
   return (
@@ -241,7 +297,22 @@ export default function UserPage() {
                         <p className="text-[11px] text-muted-foreground">@{u.username}</p>
                       </div>
                       <div className="flex items-center gap-1">
+                        {currentRole === "admin" && subscriptionBadge(u.subscription.status)}
                         {roleBadge(u.role)}
+                        {currentRole === "admin" && u.role === "manager" && (
+                          <button 
+                            onClick={() => setSubscriptionModal({ 
+                              userId: u.id, 
+                              userName: u.name, 
+                              start: undefined, 
+                              end: undefined 
+                            })} 
+                            className="rounded p-1 text-amber-400 hover:bg-amber-50 hover:text-amber-600" 
+                            title="Edit Subscription"
+                          >
+                            <Calendar className="size-3.5" />
+                          </button>
+                        )}
                         {currentRole === "admin" && (
                           <button onClick={() => setAssignModal({ userId: u.id, userName: u.name, userTenants: u.tenants || [] })} className="rounded p-1 text-blue-400 hover:bg-blue-50 hover:text-blue-600" title="Assign Tenant">
                             <Building2 className="size-3.5" />
@@ -256,6 +327,7 @@ export default function UserPage() {
                       <div><span className="text-muted-foreground">Email:</span> <span className="font-medium">{u.email}</span></div>
                       <div><span className="text-muted-foreground">Phone:</span> <span className="font-medium">{u.phone}</span></div>
                       <div><span className="text-muted-foreground">Tenant:</span> <span className="font-medium">{u.tenant}</span></div>
+                      {currentRole === "admin" && <div><span className="text-muted-foreground">Subs:</span> <span className="font-medium">{u.subscription.end || "-"}</span></div>}
                       <div><span className="text-muted-foreground">Dibuat:</span> <span className="font-medium">{u.createdAt}</span></div>
                     </div>
                   </div>
@@ -273,15 +345,16 @@ export default function UserPage() {
                     <th className="pb-2 font-medium">Phone</th>
                     <th className="pb-2 font-medium">Role</th>
                     <th className="pb-2 font-medium">Tenant</th>
+                    {currentRole === "admin" && <th className="pb-2 font-medium">Subscription</th>}
                     <th className="pb-2 font-medium">Dibuat</th>
                     <th className="pb-2 font-medium text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {loading ? (
-                    <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
+                    <tr><td colSpan={currentRole === "admin" ? 9 : 8} className="py-6 text-center text-muted-foreground">Loading...</td></tr>
                   ) : filtered.length === 0 ? (
-                    <tr><td colSpan={8} className="py-6 text-center text-muted-foreground">Tidak ada user ditemukan</td></tr>
+                    <tr><td colSpan={currentRole === "admin" ? 9 : 8} className="py-6 text-center text-muted-foreground">Tidak ada user ditemukan</td></tr>
                   ) : (
                     paginated.map((u) => (
                       <tr key={u.id} className="hover:bg-muted/30">
@@ -291,9 +364,31 @@ export default function UserPage() {
                         <td className="py-2.5 text-muted-foreground">{u.phone}</td>
                         <td className="py-2.5">{roleBadge(u.role)}</td>
                         <td className="py-2.5 text-muted-foreground">{u.tenant}</td>
+                        {currentRole === "admin" && (
+                          <td className="py-2.5">
+                            <div className="flex flex-col gap-0.5">
+                              {subscriptionBadge(u.subscription.status)}
+                              {u.subscription.end && <span className="text-[10px] text-muted-foreground">until {u.subscription.end}</span>}
+                            </div>
+                          </td>
+                        )}
                         <td className="py-2.5 text-muted-foreground">{u.createdAt}</td>
                         <td className="py-2.5 text-center">
                           <div className="flex items-center justify-center gap-1">
+                            {currentRole === "admin" && u.role === "manager" && (
+                              <button 
+                                onClick={() => setSubscriptionModal({ 
+                                  userId: u.id, 
+                                  userName: u.name, 
+                                  start: undefined, 
+                                  end: undefined 
+                                })} 
+                                className="rounded p-1 text-amber-400 hover:bg-amber-50 hover:text-amber-600" 
+                                title="Edit Subscription"
+                              >
+                                <Calendar className="size-3.5" />
+                              </button>
+                            )}
                             {currentRole === "admin" && (
                               <button onClick={() => setAssignModal({ userId: u.id, userName: u.name, userTenants: u.tenants || [] })} className="rounded p-1 text-blue-400 hover:bg-blue-50 hover:text-blue-600" title="Assign Tenant">
                                 <Building2 className="size-3.5" />
@@ -346,7 +441,7 @@ export default function UserPage() {
           <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-semibold">Create User</h3>
-              <button onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); }} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
+              <button onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); setSubsStart(undefined); setSubsEnd(undefined); }} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
             </div>
             <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); handleCreate(); }}>
             <div className="space-y-3">
@@ -403,8 +498,37 @@ export default function UserPage() {
                 <Label className="text-xs">Password</Label>
                 <Input autoComplete="new-password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder="Password" />
               </div>
+              {/* Subscription dates - only for manager role */}
+              {form.role === "manager" && currentRole === "admin" && (
+              <div className="space-y-2 rounded-lg border border-dashed border-amber-200 bg-amber-50/50 p-3">
+                <p className="text-xs font-medium text-amber-700">Subscription Period</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Start Date</Label>
+                    <DatePicker
+                      value={subsStart}
+                      onChange={(date) => {
+                        setSubsStart(date);
+                        if (subsEnd && date && subsEnd < date) setSubsEnd(undefined);
+                      }}
+                      placeholder="Pilih tanggal"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
+                    <DatePicker
+                      value={subsEnd}
+                      onChange={setSubsEnd}
+                      placeholder="Pilih tanggal"
+                      minDate={subsStart}
+                      disabled={!subsStart}
+                    />
+                  </div>
+                </div>
+              </div>
+              )}
               <div className="flex gap-2 pt-2">
-                <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); }}>Batal</Button>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => { setShowCreate(false); setForm({ name: "", username: "", email: "", phone: "", password: "", role: "cashier", tenantId: "" }); setSubsStart(undefined); setSubsEnd(undefined); }}>Batal</Button>
                 <Button type="submit" className="flex-1" disabled={saving}>{saving ? "Menyimpan..." : "Simpan"}</Button>
               </div>
             </div>
@@ -485,6 +609,54 @@ export default function UserPage() {
               <div className="flex gap-2 pt-2">
                 <Button variant="outline" className="flex-1" onClick={() => { setAssignModal(null); setAssignForm({ tenantId: "", role: "manager" }); }}>Tutup</Button>
                 <Button className="flex-1" onClick={handleAssignTenant} disabled={assignSaving || !assignForm.tenantId}>{assignSaving ? "Menyimpan..." : "Assign"}</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Modal */}
+      {subscriptionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-background p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold">Edit Subscription</h3>
+              <button onClick={() => setSubscriptionModal(null)} className="rounded p-1 hover:bg-muted"><X className="size-4" /></button>
+            </div>
+            <p className="mb-3 text-sm text-muted-foreground">
+              Subscription untuk <span className="font-medium text-foreground">{subscriptionModal.userName}</span>
+            </p>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-dashed border-amber-200 bg-amber-50/50 p-3 space-y-3">
+                <p className="text-xs font-medium text-amber-700">Subscription Period</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Start Date</Label>
+                    <DatePicker
+                      value={subscriptionModal.start}
+                      onChange={(date) => {
+                        setSubscriptionModal({ ...subscriptionModal, start: date, end: subscriptionModal.end && date && subscriptionModal.end < date ? undefined : subscriptionModal.end });
+                      }}
+                      placeholder="Pilih tanggal"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">End Date</Label>
+                    <DatePicker
+                      value={subscriptionModal.end}
+                      onChange={(date) => setSubscriptionModal({ ...subscriptionModal, end: date })}
+                      placeholder="Pilih tanggal"
+                      minDate={subscriptionModal.start}
+                      disabled={!subscriptionModal.start}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button variant="outline" className="flex-1" onClick={() => setSubscriptionModal(null)}>Batal</Button>
+                <Button className="flex-1" onClick={handleUpdateSubscription} disabled={subscriptionSaving || !subscriptionModal.end}>
+                  {subscriptionSaving ? "Menyimpan..." : "Simpan"}
+                </Button>
               </div>
             </div>
           </div>
