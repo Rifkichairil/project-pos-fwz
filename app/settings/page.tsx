@@ -22,6 +22,7 @@ type SettingsData = {
   ppnRate: number;
   qrisImageUrl: string;
   inventoryPolicy: string;
+  pointEnabled: boolean;
   pointValue: number;
   pointPerRupiah: number;
 };

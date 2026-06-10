@@ -466,7 +466,7 @@ export default function UserPage() {
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Role</Label>
-                  <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val })}>
+                  <Select value={form.role} onValueChange={(val) => setForm({ ...form, role: val ?? "" })}>
                     <SelectTrigger className="h-8 w-full text-xs">
                       <SelectValue />
                     </SelectTrigger>
@@ -482,7 +482,7 @@ export default function UserPage() {
               {(currentRole === "admin" || tenants.length > 1) && (
               <div className="space-y-1">
                 <Label className="text-xs">Tenant</Label>
-                <Select value={form.tenantId} onValueChange={(val) => setForm({ ...form, tenantId: val })}>
+                <Select value={form.tenantId} onValueChange={(val) => setForm({ ...form, tenantId: val ?? "" })}>
                   <SelectTrigger className="h-8 w-full text-xs">
                     <SelectValue placeholder="Pilih tenant..." />
                   </SelectTrigger>
@@ -580,7 +580,7 @@ export default function UserPage() {
             <div className="space-y-3">
               <div className="space-y-1">
                 <Label className="text-xs">Tambah Tenant</Label>
-                <Select value={assignForm.tenantId} onValueChange={(val) => setAssignForm({ ...assignForm, tenantId: val })}>
+                <Select value={assignForm.tenantId} onValueChange={(val) => setAssignForm({ ...assignForm, tenantId: val ?? "" })}>
                   <SelectTrigger className="h-8 w-full text-xs">
                     <SelectValue placeholder="Pilih tenant..." />
                   </SelectTrigger>
@@ -595,7 +595,7 @@ export default function UserPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Role di tenant ini</Label>
-                <Select value={assignForm.role} onValueChange={(val) => setAssignForm({ ...assignForm, role: val })}>
+                <Select value={assignForm.role} onValueChange={(val) => setAssignForm({ ...assignForm, role: val ?? "" })}>
                   <SelectTrigger className="h-8 w-full text-xs">
                     <SelectValue />
                   </SelectTrigger>
