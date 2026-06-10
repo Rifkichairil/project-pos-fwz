@@ -1074,11 +1074,7 @@ export default function InventoryPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">User</Label>
-<<<<<<< HEAD
-                <Select value={newMovement.user} onValueChange={(val) => setNewMovement({ ...newMovement, user: val || "" })}>
-=======
                 <Select value={newMovement.user} onValueChange={(val) => setNewMovement({ ...newMovement, user: val ?? "" })}>
->>>>>>> fe73efc083ee7ddcf393162ccd4136ab91247810
                   <SelectTrigger className="h-8 w-full text-xs">
                     <SelectValue placeholder="Select user..." />
                   </SelectTrigger>
