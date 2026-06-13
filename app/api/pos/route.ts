@@ -585,12 +585,18 @@ export async function POST(request: Request) {
       }
     }
 
-    // Deduct ingredient stock based on menu recipes
+    // Deduct ingredient stock based on menu recipes (skip if inventory policy is off)
+    const inventorySettingResult = await client.query<{ inventory_policy: string }>(
+      `SELECT inventory_policy FROM settings WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const inventoryPolicy = inventorySettingResult.rows[0]?.inventory_policy || "medium";
+
     const orderedMenuIds = body.items
       .map(item => item.menuId && item.menuId > 0 ? item.menuId : menuMap.get(item.name.toLowerCase()) || null)
       .filter((id): id is number => id !== null);
 
-    if (orderedMenuIds.length > 0) {
+    if (inventoryPolicy !== "off" && orderedMenuIds.length > 0) {
       const recipeResult = await client.query<{
         menu_id: number;
         ingredient_id: number;
@@ -677,6 +683,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, salesOrderId, orderCode: body.orderCode, pointsEarned: earnedPoints });
   } catch (error) {
     await client.query("ROLLBACK");
+    console.error("POS POST error:", error);
 
     if (error && typeof error === "object" && "code" in error && (error as { code?: string }).code === "23505") {
       return NextResponse.json({ error: "Order code already exists" }, { status: 409 });
