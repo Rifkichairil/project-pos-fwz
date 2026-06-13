@@ -44,20 +44,52 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; tenantId: number | null; tenantName: string | null } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; tenantId: number | null; tenantName: string | null } | null>(() => {
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("pos_user");
+      if (cached) { try { return JSON.parse(cached); } catch { return null; } }
+    }
+    return null;
+  });
   const [tenants, setTenants] = useState<{ id: number; name: string }[]>([]);
   const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
-  const [requireCustomerInfo, setRequireCustomerInfo] = useState(true);
+
+  // Load requireCustomerInfo from cache first
+  const [requireCustomerInfo, setRequireCustomerInfo] = useState(() => {
+    if (typeof window !== "undefined") {
+      const cached = sessionStorage.getItem("pos_settings");
+      if (cached) {
+        try { return JSON.parse(cached).requireCustomerInfo ?? true; } catch { return true; }
+      }
+    }
+    return true;
+  });
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data?.name) setCurrentUser({ name: data.name, email: data.email, role: data.role, tenantId: data.tenantId ?? null, tenantName: data.tenantName ?? null }); })
+      .then((data) => {
+        if (data?.name) {
+          const user = { name: data.name, email: data.email, role: data.role, tenantId: data.tenantId ?? null, tenantName: data.tenantName ?? null };
+          setCurrentUser(user);
+          sessionStorage.setItem("pos_user", JSON.stringify(user));
+        }
+      })
       .catch(() => {});
-    fetch("/api/settings")
-      .then((res) => res.ok ? res.json() : null)
-      .then((data) => { if (data) setRequireCustomerInfo(data.requireCustomerInfo ?? true); })
-      .catch(() => {});
+
+    // Only fetch settings if no cache exists
+    const cached = sessionStorage.getItem("pos_settings");
+    if (!cached) {
+      fetch("/api/settings")
+        .then((res) => res.ok ? res.json() : null)
+        .then((data) => {
+          if (data) {
+            setRequireCustomerInfo(data.requireCustomerInfo ?? true);
+            sessionStorage.setItem("pos_settings", JSON.stringify({ requireCustomerInfo: data.requireCustomerInfo ?? true }));
+          }
+        })
+        .catch(() => {});
+    }
   }, []);
 
   // Re-fetch settings when changed from settings page
@@ -66,7 +98,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       if (e.key === "settings_updated") {
         fetch("/api/settings")
           .then((res) => res.ok ? res.json() : null)
-          .then((data) => { if (data) setRequireCustomerInfo(data.requireCustomerInfo ?? true); })
+          .then((data) => {
+            if (data) {
+              setRequireCustomerInfo(data.requireCustomerInfo ?? true);
+              sessionStorage.setItem("pos_settings", JSON.stringify({ requireCustomerInfo: data.requireCustomerInfo ?? true }));
+            }
+          })
           .catch(() => {});
       }
     };
@@ -106,6 +143,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const visibleBottomNav = bottomNav.filter((item) => item.roles.includes(userRole));
 
   const handleLogout = async () => {
+    sessionStorage.removeItem("pos_user");
+    sessionStorage.removeItem("pos_settings");
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
   };

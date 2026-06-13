@@ -391,7 +391,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PosOrderPayload;
 
-    if (!body.orderCode || !body.cashierName) {
+    if (!body.orderCode) {
       return NextResponse.json({ error: "Invalid order payload" }, { status: 400 });
     }
 
@@ -437,7 +437,7 @@ export async function POST(request: Request) {
         tenantId,
         body.orderCode,
         memberId,
-        body.cashierName,
+        body.cashierName || "Kasir",
         orderStatus,
         body.subtotal,
         body.discount,

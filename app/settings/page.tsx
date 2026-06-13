@@ -133,9 +133,10 @@ export default function SettingsPage() {
       });
       if (!res.ok) throw new Error();
       toast.success("Pengaturan berhasil disimpan!");
-      // Notify other tabs that settings changed
+      // Clear cache and notify other tabs
+      sessionStorage.removeItem("pos_settings");
       localStorage.setItem("settings_updated", Date.now().toString());
-      // Soft reload current page to update sidebar
+      // Soft reload to apply changes
       window.location.reload();
     } catch {
       toast.error("Gagal menyimpan pengaturan");
