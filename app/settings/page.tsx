@@ -26,6 +26,8 @@ type SettingsData = {
   pointEnabled: boolean;
   pointValue: number;
   pointPerRupiah: number;
+  requireCustomerInfo: boolean;
+  simpleMode: boolean;
 };
 
 export default function SettingsPage() {
