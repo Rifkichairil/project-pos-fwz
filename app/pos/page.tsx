@@ -263,6 +263,8 @@ export default function PosPage() {
   const [pointPerRupiah, setPointPerRupiah] = useState(10000);
   const [pointValue, setPointValue] = useState(1);
   const [inventoryPolicy, setInventoryPolicy] = useState("medium");
+  const [requireCustomerInfo, setRequireCustomerInfo] = useState(true);
+  const [simpleMode, setSimpleMode] = useState(false);
   const [cashierName, setCashierName] = useState("");
 
   const promoMap: Record<string, { label: string; calc: (sub: number) => number }> = {
@@ -286,6 +288,8 @@ export default function PosPage() {
         ppnRate: number;
         pointPerRupiah: number;
         pointValue: number;
+        requireCustomerInfo: boolean;
+        simpleMode: boolean;
       };
       setTaxPb1(data.pb1Enabled ? data.pb1Rate : 0);
       setTaxService(data.serviceEnabled ? data.serviceRate : 0);
@@ -294,6 +298,8 @@ export default function PosPage() {
       setStoreQrisImage(data.qrisImageUrl || "");
       setPointPerRupiah(data.pointPerRupiah || 10000);
       setPointValue(data.pointValue || 1);
+      setRequireCustomerInfo(data.requireCustomerInfo ?? true);
+      setSimpleMode(data.simpleMode ?? false);
     } catch {
       // fallback to 0
     }
@@ -856,6 +862,7 @@ export default function PosPage() {
             note: item.note,
             addons: item.addons,
           })),
+          simpleMode,
         }),
       });
 
@@ -901,6 +908,7 @@ export default function PosPage() {
           orderCode,
           paymentStatus: "paid",
           handledBy: cashierName,
+          simpleMode,
         }),
       });
 
@@ -1004,7 +1012,8 @@ export default function PosPage() {
               "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
               activeTab === "list"
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              simpleMode && "hidden"
             )}
           >
             Order List
@@ -1015,7 +1024,8 @@ export default function PosPage() {
               "rounded-t-lg px-3 py-2 text-xs sm:px-4 sm:py-2 sm:text-sm font-medium transition-colors",
               activeTab === "table"
                 ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              simpleMode && "hidden"
             )}
           >
             Table
@@ -1044,6 +1054,8 @@ export default function PosPage() {
           {activeTab === "new" ? (
             <>
           {/* Orders List */}
+          {!simpleMode && (
+          <>
           <div className="mb-6 flex items-center justify-between">
             <h2 className="text-base font-semibold">Orders List</h2>
             <button
@@ -1106,6 +1118,8 @@ export default function PosPage() {
               </div>
             )}
           </div>
+          </>
+          )}
 
           {/* Menu List */}
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1704,6 +1718,7 @@ export default function PosPage() {
 
         <div className="flex-1 overflow-y-auto p-4">
           {/* Customer Info */}
+          {requireCustomerInfo && (
           <div className="mb-4">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold">Customer Information</h3>
@@ -1741,6 +1756,7 @@ export default function PosPage() {
               <p className="text-xs text-muted-foreground italic">Belum ada data customer. Klik ikon pensil untuk mengisi.</p>
             )}
           </div>
+          )}
 
           {/* Order Items */}
           <div className="mb-4">
@@ -2019,7 +2035,7 @@ export default function PosPage() {
         <div className="border-t p-4">
           <Button
             className="h-11 w-full rounded-xl bg-blue-600 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-            disabled={!customerName.trim() || !orderType || (orderType === "dinein" && !tableNumber) || cart.length === 0 || (paymentMethod === "cash" && (!cashAmount || Number(cashAmount) < total))}
+            disabled={cart.length === 0 || (requireCustomerInfo && (!customerName.trim() || !orderType)) || (orderType === "dinein" && !tableNumber) || (paymentMethod === "cash" && (!cashAmount || Number(cashAmount) < total))}
             onClick={() => {
               setMidtransError("");
               setMidtransRedirectUrl("");

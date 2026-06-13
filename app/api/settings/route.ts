@@ -17,6 +17,8 @@ type SettingsRow = {
   point_enabled: boolean;
   point_value: string;
   point_per_rupiah: string;
+  require_customer_info: boolean;
+  simple_mode: boolean;
 };
 
 type UpdatePayload = {
@@ -34,6 +36,8 @@ type UpdatePayload = {
   pointEnabled?: boolean;
   pointValue?: number | string;
   pointPerRupiah?: number | string;
+  requireCustomerInfo?: boolean;
+  simpleMode?: boolean;
 };
 
 export async function GET() {
@@ -42,7 +46,7 @@ export async function GET() {
 
   try {
     const result = await db.query<SettingsRow>(
-      `SELECT store_name, address, wifi_password, pb1_enabled, pb1_rate, service_enabled, service_rate, ppn_enabled, ppn_rate, qris_image_url, inventory_policy, COALESCE(point_enabled, true) as point_enabled, point_value, point_per_rupiah FROM settings WHERE tenant_id = $1`,
+      `SELECT store_name, address, wifi_password, pb1_enabled, pb1_rate, service_enabled, service_rate, ppn_enabled, ppn_rate, qris_image_url, inventory_policy, COALESCE(point_enabled, true) as point_enabled, point_value, point_per_rupiah, COALESCE(require_customer_info, true) as require_customer_info, COALESCE(simple_mode, false) as simple_mode FROM settings WHERE tenant_id = $1`,
       [tenant.context.tenantId]
     );
 
@@ -69,6 +73,8 @@ export async function GET() {
         pointEnabled: true,
         pointValue: 1,
         pointPerRupiah: 1000,
+        requireCustomerInfo: true,
+        simpleMode: false,
       });
     }
 
@@ -88,6 +94,8 @@ export async function GET() {
       pointEnabled: row.point_enabled,
       pointValue: Number(row.point_value),
       pointPerRupiah: Number(row.point_per_rupiah),
+      requireCustomerInfo: row.require_customer_info,
+      simpleMode: row.simple_mode,
     });
   } catch {
     return NextResponse.json({ error: "Failed to load settings" }, { status: 500 });
@@ -115,6 +123,8 @@ export async function PUT(request: Request) {
     const pointEnabled = body.pointEnabled ?? true;
     const pointValue = Number(body.pointValue) || 1;
     const pointPerRupiah = Number(body.pointPerRupiah) || 1000;
+    const requireCustomerInfo = body.requireCustomerInfo ?? true;
+    const simpleMode = body.simpleMode ?? false;
 
     await db.query(
       `
@@ -133,8 +143,10 @@ export async function PUT(request: Request) {
           inventory_policy,
           point_enabled,
           point_value,
-          point_per_rupiah
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          point_per_rupiah,
+          require_customer_info,
+          simple_mode
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
         ON CONFLICT (tenant_id) DO UPDATE SET
           store_name = EXCLUDED.store_name,
           address = EXCLUDED.address,
@@ -150,9 +162,11 @@ export async function PUT(request: Request) {
           point_enabled = EXCLUDED.point_enabled,
           point_value = EXCLUDED.point_value,
           point_per_rupiah = EXCLUDED.point_per_rupiah,
+          require_customer_info = EXCLUDED.require_customer_info,
+          simple_mode = EXCLUDED.simple_mode,
           updated_at = NOW()
       `,
-      [tenant.context.tenantId, storeName, address, wifiPassword, pb1Enabled, pb1Rate, serviceEnabled, serviceRate, ppnEnabled, ppnRate, qrisImageUrl, inventoryPolicy, pointEnabled, pointValue, pointPerRupiah]
+      [tenant.context.tenantId, storeName, address, wifiPassword, pb1Enabled, pb1Rate, serviceEnabled, serviceRate, ppnEnabled, ppnRate, qrisImageUrl, inventoryPolicy, pointEnabled, pointValue, pointPerRupiah, requireCustomerInfo, simpleMode]
     );
 
     return NextResponse.json({ success: true });

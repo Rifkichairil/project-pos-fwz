@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Store, MapPin, Wifi, Percent, QrCode, Package, Upload, Coins, Loader2 } from "lucide-react";
+import { Store, MapPin, Wifi, Percent, QrCode, Package, Upload, Coins, Loader2, ShoppingCart } from "lucide-react";
 import { cn } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -28,6 +29,7 @@ type SettingsData = {
 };
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [storeName, setStoreName] = useState("");
   const [address, setAddress] = useState("");
   const [wifiPassword, setWifiPassword] = useState("");
@@ -44,6 +46,8 @@ export default function SettingsPage() {
   const [pointEnabled, setPointEnabled] = useState(true);
   const [pointValue, setPointValue] = useState("1");
   const [pointPerRupiah, setPointPerRupiah] = useState("1000");
+  const [requireCustomerInfo, setRequireCustomerInfo] = useState(true);
+  const [simpleMode, setSimpleMode] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +73,8 @@ export default function SettingsPage() {
         setPointEnabled(data.pointEnabled ?? true);
         setPointValue(String(data.pointValue || 1));
         setPointPerRupiah(String(data.pointPerRupiah || 1000));
+        setRequireCustomerInfo(data.requireCustomerInfo ?? true);
+        setSimpleMode(data.simpleMode ?? false);
       } catch {
         toast.error("Gagal memuat pengaturan");
       } finally {
@@ -119,10 +125,16 @@ export default function SettingsPage() {
           pointEnabled,
           pointValue: Number(pointValue) || 1,
           pointPerRupiah: Number(pointPerRupiah) || 1000,
+          requireCustomerInfo,
+          simpleMode,
         }),
       });
       if (!res.ok) throw new Error();
       toast.success("Pengaturan berhasil disimpan!");
+      // Notify other tabs that settings changed
+      localStorage.setItem("settings_updated", Date.now().toString());
+      // Soft reload current page to update sidebar
+      window.location.reload();
     } catch {
       toast.error("Gagal menyimpan pengaturan");
     } finally {
@@ -324,6 +336,46 @@ export default function SettingsPage() {
               </p>
             </CardContent>
             )}
+          </Card>
+
+          {/* POS Settings */}
+          <Card className="border-border/60">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-sm font-semibold">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="size-4" />
+                  Wajib Isi Info Customer
+                </div>
+                <Switch checked={requireCustomerInfo} onCheckedChange={setRequireCustomerInfo} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-[10px] text-muted-foreground">
+                {requireCustomerInfo
+                  ? "Kasir wajib mengisi nama customer dan tipe order sebelum bisa memproses pembayaran."
+                  : "Info customer bersifat opsional. Kasir bisa langsung memproses pembayaran tanpa mengisi nama atau tipe order."}
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Simple Mode */}
+          <Card className="border-border/60">
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between text-sm font-semibold">
+                <div className="flex items-center gap-2">
+                  <ShoppingCart className="size-4" />
+                  Mode Simpel (Tanpa Order List)
+                </div>
+                <Switch checked={simpleMode} onCheckedChange={setSimpleMode} />
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-[10px] text-muted-foreground">
+                {simpleMode
+                  ? "Mode simpel aktif. Tab Order List dan Table di-hide. Order langsung tercatat sebagai completed tanpa melalui antrian."
+                  : "Mode normal. Semua tab tersedia (New Order, Order List, Table) dan order melalui proses antrian."}
+              </p>
+            </CardContent>
           </Card>
 
           {/* Tax Settings */}

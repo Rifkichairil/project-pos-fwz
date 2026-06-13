@@ -47,12 +47,31 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string; role: string; tenantId: number | null; tenantName: string | null } | null>(null);
   const [tenants, setTenants] = useState<{ id: number; name: string }[]>([]);
   const [showTenantSwitcher, setShowTenantSwitcher] = useState(false);
+  const [requireCustomerInfo, setRequireCustomerInfo] = useState(true);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((res) => res.ok ? res.json() : null)
       .then((data) => { if (data?.name) setCurrentUser({ name: data.name, email: data.email, role: data.role, tenantId: data.tenantId ?? null, tenantName: data.tenantName ?? null }); })
       .catch(() => {});
+    fetch("/api/settings")
+      .then((res) => res.ok ? res.json() : null)
+      .then((data) => { if (data) setRequireCustomerInfo(data.requireCustomerInfo ?? true); })
+      .catch(() => {});
+  }, []);
+
+  // Re-fetch settings when changed from settings page
+  useEffect(() => {
+    const handler = (e: StorageEvent) => {
+      if (e.key === "settings_updated") {
+        fetch("/api/settings")
+          .then((res) => res.ok ? res.json() : null)
+          .then((data) => { if (data) setRequireCustomerInfo(data.requireCustomerInfo ?? true); })
+          .catch(() => {});
+      }
+    };
+    window.addEventListener("storage", handler);
+    return () => window.removeEventListener("storage", handler);
   }, []);
 
   useEffect(() => {
@@ -79,7 +98,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
   };
 
   const userRole = currentUser?.role || "cashier";
-  const navItems = allNavItems.filter((item) => item.roles.includes(userRole));
+  const navItems = allNavItems.filter((item) => {
+    if (!item.roles.includes(userRole)) return false;
+    if (item.href === "/member" && !requireCustomerInfo) return false;
+    return true;
+  });
   const visibleBottomNav = bottomNav.filter((item) => item.roles.includes(userRole));
 
   const handleLogout = async () => {

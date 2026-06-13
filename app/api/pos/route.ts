@@ -32,6 +32,7 @@ type PosOrderPayload = {
   ppnAmount?: number;
   total: number;
   items: PosOrderItemPayload[];
+  simpleMode?: boolean;
 };
 
 type KanbanStatus = "Queue" | "Process" | "Ready" | "Served" | "Done";
@@ -54,6 +55,7 @@ type PosOrderStatusPatchPayload = {
   status?: KanbanStatus;
   paymentStatus?: "pending" | "paid" | "failed" | "voided" | "refunded";
   handledBy?: string;
+  simpleMode?: boolean;
 };
 
 const toKanbanStatus = (status: PosOrderBoardRow["status"], kanbanNote: string | null): KanbanStatus => {
@@ -306,6 +308,14 @@ export async function PATCH(request: Request) {
       [row.id, row.status, nextOrderStatus, body.handledBy || "POS Cashier", `payment:${body.paymentStatus}`]
     );
 
+    // Also update kanban to Done when payment is finalized in simple mode
+    if (body.paymentStatus === "paid" && body.simpleMode) {
+      await client.query(
+        `INSERT INTO order_status_history (sales_order_id, from_status, to_status, changed_by, note) VALUES ($1, $2, $3, $4, $5)`,
+        [row.id, row.status, nextOrderStatus, body.handledBy || "POS Cashier", "kanban:Done"]
+      );
+    }
+
     // Award points to member when payment is finalized as paid
     let earnedPointsPatch = 0;
     if (body.paymentStatus === "paid" && row.member_id) {
@@ -381,7 +391,7 @@ export async function POST(request: Request) {
   try {
     const body = (await request.json()) as PosOrderPayload;
 
-    if (!body.orderCode || !body.customerName || !body.orderType || !body.cashierName) {
+    if (!body.orderCode || !body.cashierName) {
       return NextResponse.json({ error: "Invalid order payload" }, { status: 400 });
     }
 
@@ -531,7 +541,7 @@ export async function POST(request: Request) {
           note
         ) VALUES ($1, $2, $3, $4, $5)
       `,
-      [salesOrderId, null, orderStatus, body.cashierName, "kanban:Queue"]
+      [salesOrderId, null, orderStatus, body.cashierName, body.simpleMode ? "kanban:Done" : "kanban:Queue"]
     );
 
     // Award points to member if order is paid
